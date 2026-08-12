@@ -11,7 +11,7 @@ import os
 
 class Settings(BaseSettings):
     # ── Database ──────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/plagiarism_db"
+    DATABASE_URL: str = "mysql://root:password@localhost:3306/plagiarism_db"
 
     # ── Redis / Celery ────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
