@@ -1,0 +1,54 @@
+AI Detection Model - Evaluation Report
+==================================================
+
+Model: RandomForestClassifier
+  n_estimators: 200
+  max_depth: 10
+  class_weight: balanced
+
+Dataset:
+  Train: 2155 samples
+  Test:  584 samples
+  Features: 18
+
+Results:
+  Train Accuracy: 100.00%
+  Test Accuracy:  97.43%
+  Precision:      99.22%
+  Recall:         96.96%
+  F1-Score:       98.08%
+  ROC-AUC:        0.9924
+
+Classification Report:
+              precision    recall  f1-score   support
+
+   Human (0)       0.94      0.98      0.96       189
+      AI (1)       0.99      0.97      0.98       395
+
+    accuracy                           0.97       584
+   macro avg       0.97      0.98      0.97       584
+weighted avg       0.98      0.97      0.97       584
+
+Confusion Matrix:
+[[186   3]
+ [ 12 383]]
+
+Feature Importance:
+  avg_paragraph_length           0.2632
+  mean_perplexity                0.1668
+  entropy                        0.1568
+  flesch_reading_ease            0.1099
+  perplexity_variance            0.0631
+  stop_word_ratio                0.0571
+  type_token_ratio               0.0392
+  sentence_length_std            0.0274
+  noun_ratio                     0.0177
+  avg_sentence_length            0.0171
+  over_structured_coherence      0.0144
+  verb_ratio                     0.0129
+  adjective_ratio                0.0126
+  named_entity_density           0.0106
+  punctuation_frequency          0.0106
+  lack_of_personal_voice         0.0106
+  generic_phrasing               0.0055
+  contraction_ratio              0.0043

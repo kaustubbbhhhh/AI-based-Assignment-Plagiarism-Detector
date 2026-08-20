@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # ── Connection strings ────────────────────────────────────────
 SQLITE_URL = "sqlite:///./plagiarism.db"
-MYSQL_URL = "mysql+pymysql://root:password@localhost:3306/plagiarism_db"
+MYSQL_URL = "mysql+pymysql://root:12345678@localhost:3306/plagiarism_db"
 
 # Tables to migrate in dependency order (parents before children)
 TABLES = ["users", "submissions", "reports"]

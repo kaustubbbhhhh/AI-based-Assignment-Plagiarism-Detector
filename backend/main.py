@@ -5,15 +5,26 @@ This is the main server file. It:
   - Creates the FastAPI app
   - Configures CORS for the React frontend
   - Includes all API routers
-  - Auto-creates database tables on startup
+  - Auto-creates and safely auto-migrates database tables on startup
   - Configures structured logging
 """
 
 import os
+import warnings
 import logging
+
+# Suppress PyTorch CUDA pynvml deprecation and Hugging Face warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.cuda")
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from core.database import engine, Base
 from core.config import get_settings
 
@@ -41,6 +52,38 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _ensure_schema_columns():
+    """Safely adds new columns to existing database tables if they do not exist."""
+    with engine.connect() as conn:
+        # Columns to check and add for submissions table
+        submission_cols = [
+            ("assignment_title", "VARCHAR(200) DEFAULT 'Assignment 1'"),
+            ("is_locked", "BOOLEAN DEFAULT 0"),
+            ("locked_at", "DATETIME NULL"),
+            ("verification_token", "VARCHAR(100) NULL"),
+        ]
+        for col_name, col_type in submission_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE submissions ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+                logger.info(f"Schema migrated: Added submissions.{col_name}")
+            except Exception:
+                pass  # column already exists or table not yet created
+
+        # Columns to check and add for reports table
+        report_cols = [
+            ("ocr_score", "FLOAT DEFAULT 100.0"),
+            ("ocr_status", "VARCHAR(100) DEFAULT 'Accepted'"),
+        ]
+        for col_name, col_type in report_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE reports ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+                logger.info(f"Schema migrated: Added reports.{col_name}")
+            except Exception:
+                pass
+
+
 # ── Lifespan (startup/shutdown events) ────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,9 +96,10 @@ async def lifespan(app: FastAPI):
     # Create all database tables
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database tables created / verified.")
+        _ensure_schema_columns()
+        logger.info("✅ Database tables created & verified.")
     except Exception as e:
-        logger.error(f"⚠️ Database connection failed: {e}")
+        logger.error(f"⚠️ Database connection / migration notice: {e}")
         logger.warning("Server will start but DB-dependent routes will fail until DB is available.")
 
     yield
@@ -75,7 +119,6 @@ app = FastAPI(
 )
 
 # ── CORS Middleware ───────────────────────────────────────────
-# Allow local frontend dev servers to talk to this API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -83,11 +126,17 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
     ],
+    allow_origin_regex=r"http://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ── Register Routers ─────────────────────────────────────────
 app.include_router(auth_router)
@@ -95,7 +144,6 @@ app.include_router(submissions_router)
 app.include_router(status_router)
 app.include_router(reports_router)
 app.include_router(analytics_router)
-
 
 
 # ── Health Check ──────────────────────────────────────────────
@@ -115,6 +163,4 @@ def api_health():
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Default local run settings so frontend can connect consistently.
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

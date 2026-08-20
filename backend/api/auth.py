@@ -9,9 +9,25 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from core.dependencies import get_db, get_current_user
-from core.security import hash_password, verify_password, create_access_token
+from core.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_password_reset_token,
+    verify_password_reset_token,
+)
 from models.user import User, UserRole
-from schemas.user import UserRegister, UserLogin, UserResponse, TokenResponse, SubjectSection
+from schemas.user import (
+    UserRegister,
+    UserLogin,
+    UserResponse,
+    TokenResponse,
+    SubjectSection,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    ForgotPasswordResponse,
+)
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -128,3 +144,92 @@ def update_teacher_subjects(
 
     logger.info(f"Teacher {current_user.email} updated subjects/sections list: {ss_data}")
     return current_user
+
+
+from core.config import get_settings
+from services.email_service import send_reset_password_email
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Request a password reset.
+    Generates a secure 15-minute reset token and sends real email via SMTP if configured.
+    """
+    settings = get_settings()
+    user = db.query(User).filter(User.email == payload.email).first()
+    
+    # Generic message to avoid email enumeration
+    generic_msg = "If an account with this email exists, password reset instructions have been sent."
+
+    if not user:
+        return ForgotPasswordResponse(message=generic_msg, reset_link=None)
+
+    token = create_password_reset_token(
+        user_id=user.id,
+        email=user.email,
+        current_pwd_hash=user.hashed_password,
+    )
+
+    frontend_base = settings.FRONTEND_URL.rstrip("/")
+    full_reset_link = f"{frontend_base}/reset-password?token={token}"
+    dev_relative_link = f"/reset-password?token={token}"
+
+    logger.info(f"Password reset requested for {user.email}. Full Reset link: {full_reset_link}")
+
+    # Dispatch real email via SMTP if configured
+    email_sent = send_reset_password_email(email_to=user.email, reset_link=full_reset_link)
+
+    # In development mode (if SMTP is not configured), return dev_relative_link for instant testing
+    dev_link = None if email_sent else dev_relative_link
+
+    return ForgotPasswordResponse(
+        message=generic_msg if not email_sent else f"A password reset email has been sent to {user.email}. Please check your inbox.",
+        reset_link=dev_link,
+    )
+
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset password using a valid reset token.
+    """
+    if len(payload.new_password) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 4 characters long.",
+        )
+
+    token_data = verify_password_reset_token(payload.token)
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
+
+    user_id = token_data.get("sub")
+    pwd_sig = token_data.get("pwd_sig")
+    
+    user = db.query(User).filter(User.id == int(user_id)).first() if user_id else None
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User associated with token not found.",
+        )
+
+    # Check password signature slice to ensure token hasn't already been used
+    current_sig = user.hashed_password[-12:] if user.hashed_password else ""
+    if pwd_sig != current_sig:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset token has already been used or is invalid.",
+        )
+
+    user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+    db.refresh(user)
+
+    logger.info(f"Password successfully reset for user: {user.email}")
+    return {"message": "Password has been successfully reset. You can now log in with your new password."}
+

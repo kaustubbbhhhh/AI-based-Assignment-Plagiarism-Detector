@@ -1,0 +1,20 @@
+[
+  "mean_perplexity",
+  "perplexity_variance",
+  "entropy",
+  "avg_sentence_length",
+  "sentence_length_std",
+  "type_token_ratio",
+  "stop_word_ratio",
+  "punctuation_frequency",
+  "contraction_ratio",
+  "noun_ratio",
+  "verb_ratio",
+  "adjective_ratio",
+  "named_entity_density",
+  "avg_paragraph_length",
+  "flesch_reading_ease",
+  "generic_phrasing",
+  "lack_of_personal_voice",
+  "over_structured_coherence"
+]

@@ -41,12 +41,15 @@ def _build_summary(report: Report, submission: Submission, student: User) -> Rep
     return ReportSummary(
         submission_id=submission.id,
         subject=submission.subject,
+        assignment_title=submission.assignment_title or "Assignment 1",
         filename=submission.filename,
         student_name=student.name,
         section=student.section,
         ai_score=report.ai_score,
         plagiarism_score=report.plagiarism_score,
+        ocr_score=report.ocr_score if report.ocr_score is not None else 100.0,
         label=report.label.value,
+        is_locked=bool(submission.is_locked),
         submitted_at=submission.created_at,
     )
 

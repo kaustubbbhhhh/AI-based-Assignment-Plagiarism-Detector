@@ -50,7 +50,7 @@ graph TD
 *   **Backend:** FastAPI (Python), SQLAlchemy ORM.
 *   **Database:** SQLite.
 *   **Background Jobs:** Celery task queue with a Redis broker (running a synchronous fallback in environments without Redis/Celery).
-*   **Core Libraries:** Scikit-learn (TF-IDF vectorizer, Random Forest classifier), PyTorch & Hugging Face Transformers (`distilgpt2`), NetworkX (social graph clustering), OpenCV (image processing), Google Cloud Vision API / EasyOCR (local fallback), PyPDF2, python-docx.
+*   **Core Libraries:** Scikit-learn (TF-IDF vectorizer, Random Forest classifier), PyTorch & Hugging Face Transformers (`distilgpt2`, `trocr-base-handwritten`), NetworkX (social graph clustering), OpenCV (image processing), EasyOCR / Tesseract (local OCR pipeline), PyPDF2, python-docx.
 
 ---
 
@@ -72,8 +72,8 @@ Handles handwritten document uploads, scans, and physical pages:
     *   *Perspective Correction:* Detects 4-corner document contours and applies a warp transform to flatten/deskew the page.
     *   *Shadow Removal:* Dilates the image and computes a median blur to calculate background lighting, dividing the image by it to remove uneven shadows.
     *   *Denoising:* Applies bilateral filtering to sharpen edges and clear noise.
-*   **Hybrid OCR Extraction:** Sends processed images to **Google Cloud Vision API** (using `document_text_detection` optimized for handwriting). Falls back to a local CPU-bound **EasyOCR** reader if credentials are missing or the API call fails.
-*   **Rejection Gate:** Analyzes OCR confidence scores. If the average confidence is `< 65%`, the file is rejected to prevent grading garbage inputs.
+*   **Offline Neural OCR Extraction:** Uses a hybrid local pipeline combining CRAFT text line segmentation with **Microsoft TrOCR** (`microsoft/trocr-base-handwritten`) for high-accuracy handwritten recognition, with fallback to **EasyOCR** and **Tesseract**.
+*   **Rejection Gate:** Analyzes OCR confidence scores. If the average confidence is `< 50%` with sparse text, the file is rejected to prevent grading garbage inputs.
 *   **Visual Plagiarism (Perceptual Hashing):** Computes a 64-bit dHash (difference hash) for every image. If two files have matching hashes, they are flagged as visual duplicates (e.g., student copying another's photo).
 
 ### 3. Advanced Forensic Data Mining
@@ -93,7 +93,7 @@ Teachers can manage their assigned subjects and sections through the Settings in
 *   `backend/services/ai_detection.py` - Core fusion engine.
 *   `backend/services/ml_services/statistical_engine.py` - Layer 1 statistical feature extraction and ML classification.
 *   `backend/services/ml_services/semantic_engine.py` - Layer 2 transition, phrasing, and voice checks.
-*   `backend/services/ocr_service.py` - OpenCV filtering, visual hashing, and Google Cloud Vision / EasyOCR integration.
+*   `backend/services/ocr_service.py` - OpenCV filtering, visual hashing, and TrOCR / EasyOCR local neural pipeline.
 *   `backend/services/subject_validation.py` - Keyword relevance checking per course.
 *   `backend/services/analytics/data_mining.py` - Connected components (cheating rings), stylometrics, and macro insights.
 *   `backend/train_ai_model.py` - Training script for the RandomForest statistical classifier.

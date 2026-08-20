@@ -24,8 +24,16 @@ class Settings(BaseSettings):
     # ── File Upload ───────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
 
-    # ── Google Cloud Vision OCR Credentials ───────────────────
-    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+
+    # ── SMTP Email Configuration ──────────────────────────────
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAILS_FROM_EMAIL: Optional[str] = None
+    EMAILS_FROM_NAME: str = "PlagiarismAI Support"
+    FRONTEND_URL: str = "http://localhost:5173"
+
 
     # Allow extra environment variables in .env without raising ValidationErrors
     model_config = SettingsConfigDict(

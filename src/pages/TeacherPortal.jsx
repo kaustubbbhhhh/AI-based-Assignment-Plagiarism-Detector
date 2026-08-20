@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Search, X, Download, FileText, Settings, Plus, Trash2, Save } from 'lucide-react';
+import { Search, X, Download, FileText, Settings, Plus, Trash2, Save, AlertCircle, CheckCircle2, User, LayoutDashboard } from 'lucide-react';
 
 export default function TeacherPortal() {
   // ── Stateful User profile for immediate dynamic updates ──────
@@ -128,7 +128,6 @@ export default function TeacherPortal() {
       if (!response.ok) throw new Error('Failed to fetch detailed report');
       
       const data = await response.json();
-      // Combine summary metadata with detailed report
       setSelectedReportDetail({ ...reportSummary, ...data });
     } catch (err) {
       setModalError(err.message);
@@ -244,7 +243,7 @@ export default function TeacherPortal() {
   };
 
   const pieData = [
-    { name: 'Original Content', value: stats.original || 1, color: '#10b981' },
+    { name: 'Original Content', value: stats.original || (reports.length === 0 ? 1 : 0), color: '#10b981' },
     { name: 'Moderate Match', value: stats.moderate || 0, color: '#f59e0b' },
     { name: 'High Plagiarism', value: stats.high || 0, color: '#ef4444' },
   ];
@@ -258,149 +257,148 @@ export default function TeacherPortal() {
   const noAssignments = teacherSubjectsSections.length === 0;
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 1rem' }}>
-      <div className="teacher-header-row flex flex-col-mob md:flex-row md:items-center justify-between gap-4-mob" style={{ marginBottom: '2rem' }}>
+    <div className="portal-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 0.5rem' }}>
+      
+      {/* ── Page Header & Filters ── */}
+      <div className="teacher-header-row flex flex-col-mob md:flex-row md:items-end justify-between gap-4-mob" style={{ marginBottom: '1.75rem' }}>
         <div>
-          <h2>Teacher Portal</h2>
-          <p className="text-muted">
+          <h2 style={{ fontWeight: 800, marginBottom: '0.25rem' }}>Teacher Portal</h2>
+          <p className="text-muted" style={{ fontSize: '0.925rem', margin: 0 }}>
             {activeTab === 'dashboard'
-              ? 'Review section-wise student assignments and plagiarism reports.'
-              : 'Add, edit, or delete your subject-section mappings.'}
+              ? 'Review section-wise student assignments, similarity metrics, and AI forensics.'
+              : 'Configure your course assignments and assigned class sections.'}
           </p>
         </div>
-        {activeTab === 'dashboard' && (
-          <div className="teacher-filter-row flex flex-col-mob md:flex-row md:items-center gap-2 w-full" style={{ flexWrap: 'wrap' }}>
-            {/* ── Section Dropdown ──────────────────────────── */}
-            <label className="form-label mb-0" style={{ margin: 0, marginRight: '0.5rem' }}>Section:</label>
-            <select
-              className="form-select w-full-mob"
-              value={section}
-              onChange={e => setSection(e.target.value)}
-              style={{ minWidth: '150px', maxWidth: '220px' }}
-            >
-              {uniqueSections.map(sec => (
-                <option key={sec} value={sec}>{sec}</option>
-              ))}
-            </select>
 
-            {/* ── Subject Dropdown ──────────────────────────── */}
-            <label className="form-label mb-0" style={{ margin: 0, marginLeft: '1rem', marginRight: '0.5rem' }}>Subject:</label>
-            <select
-              className="form-select w-full-mob"
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              style={{ minWidth: '180px', maxWidth: '320px' }}
-            >
-              {uniqueSubjects.map(sub => (
-                <option key={sub} value={sub}>{sub}</option>
-              ))}
-            </select>
+        {activeTab === 'dashboard' && (
+          <div className="teacher-filter-row flex flex-col-mob sm:flex-row sm:items-end gap-3" style={{ flexWrap: 'wrap' }}>
+            {/* Section Control */}
+            <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+              <label
+                htmlFor="teacher-section-select"
+                className="form-label"
+                style={{
+                  marginBottom: '0.35rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  textAlign: 'left'
+                }}
+              >
+                Section
+              </label>
+              <select
+                id="teacher-section-select"
+                className="form-select"
+                value={section}
+                onChange={e => setSection(e.target.value)}
+                style={{
+                  minWidth: '110px',
+                  maxWidth: '160px',
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 600
+                }}
+              >
+                {uniqueSections.map(sec => (
+                  <option key={sec} value={sec}>{sec}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Subject Control */}
+            <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+              <label
+                htmlFor="teacher-subject-select"
+                className="form-label"
+                style={{
+                  marginBottom: '0.35rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  textAlign: 'left'
+                }}
+              >
+                Subject
+              </label>
+              <select
+                id="teacher-subject-select"
+                className="form-select"
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                style={{
+                  minWidth: '220px',
+                  maxWidth: '320px',
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 600
+                }}
+              >
+                {uniqueSubjects.map(sub => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
 
-      {/* ── Tab Switcher ────────────────────────────────────────── */}
+      {/* ── Modern Tab Navigation ── */}
       <div style={{
         display: 'flex',
-        gap: '0.75rem',
+        gap: '0.5rem',
         borderBottom: '1px solid var(--border-color)',
         marginBottom: '2rem',
-        paddingBottom: '0.75rem'
+        paddingBottom: '0.5rem'
       }}>
         <button
           onClick={() => setActiveTab('dashboard')}
+          className="btn"
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.6rem 1.2rem',
-            borderRadius: 'var(--radius-md)',
-            fontWeight: 600,
-            fontSize: '0.9rem',
             backgroundColor: activeTab === 'dashboard' ? 'var(--primary-color)' : 'transparent',
             color: activeTab === 'dashboard' ? '#ffffff' : 'var(--text-muted)',
-            transition: 'var(--transition)'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'dashboard') {
-              e.currentTarget.style.backgroundColor = 'rgba(79, 70, 229, 0.05)';
-              e.currentTarget.style.color = 'var(--primary-color)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'dashboard') {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--text-muted)';
-            }
+            boxShadow: activeTab === 'dashboard' ? 'var(--shadow-sm)' : 'none',
+            fontSize: '0.9rem',
+            padding: '0.55rem 1.15rem'
           }}
         >
-          Dashboard
+          <LayoutDashboard size={16} />
+          <span>Dashboard & Roster</span>
         </button>
+
         <button
           onClick={() => setActiveTab('subjects')}
+          className="btn"
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.6rem 1.2rem',
-            borderRadius: 'var(--radius-md)',
-            fontWeight: 600,
-            fontSize: '0.9rem',
             backgroundColor: activeTab === 'subjects' ? 'var(--primary-color)' : 'transparent',
             color: activeTab === 'subjects' ? '#ffffff' : 'var(--text-muted)',
-            transition: 'var(--transition)'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'subjects') {
-              e.currentTarget.style.backgroundColor = 'rgba(79, 70, 229, 0.05)';
-              e.currentTarget.style.color = 'var(--primary-color)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'subjects') {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--text-muted)';
-            }
+            boxShadow: activeTab === 'subjects' ? 'var(--shadow-sm)' : 'none',
+            fontSize: '0.9rem',
+            padding: '0.55rem 1.15rem'
           }}
         >
           <Settings size={16} />
-          Manage Subjects
+          <span>Manage Courses ({teacherSubjectsSections.length})</span>
         </button>
       </div>
 
       {activeTab === 'dashboard' ? (
         <>
           {noAssignments && (
-            <div
-              style={{
-                marginBottom: '1.25rem',
-                backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                color: 'var(--warning-color, #f59e0b)',
-                border: '1px solid rgba(245, 158, 11, 0.25)',
-                borderRadius: 'var(--radius-md)',
-                padding: '0.75rem 1rem',
-                fontSize: '0.9rem',
-                fontWeight: 500
-              }}
-            >
-              No subjects or sections have been assigned to your profile. Please contact the administrator or update your registration.
+            <div className="alert alert-warning">
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <span>No subjects or sections have been assigned to your profile. Please visit the "Manage Courses" tab to add your teaching assignments.</span>
             </div>
           )}
 
           {error && (
-            <div
-              style={{
-                marginBottom: '1.25rem',
-                backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                color: 'var(--danger-color)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                borderRadius: 'var(--radius-md)',
-                padding: '0.75rem 1rem',
-                fontSize: '0.9rem',
-                fontWeight: 500
-              }}
-            >
-              {error}
+            <div className="alert alert-danger">
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <span>{error}</span>
             </div>
           )}
 
@@ -408,7 +406,7 @@ export default function TeacherPortal() {
 
             {/* Statistics Overview Card */}
             <div className="card md:col-span-1">
-              <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Section Statistics</h3>
+              <h3 style={{ marginBottom: '1.25rem', fontSize: '1.15rem', fontWeight: 700 }}>Section Statistics</h3>
               <div className="teacher-chart-shell">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -417,15 +415,23 @@ export default function TeacherPortal() {
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
+                      outerRadius={82}
+                      paddingAngle={4}
                       dataKey="value"
                     >
                       {pieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-md)',
+                        boxShadow: 'var(--shadow-md)',
+                        fontSize: '0.85rem'
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -437,9 +443,9 @@ export default function TeacherPortal() {
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <p style={{ fontSize: '0.875rem' }} className="text-muted text-center">
-                  Showing AI + Copied Content ratio for <strong>{section}</strong> — <strong>{subject}</strong>.
+              <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
+                <p style={{ fontSize: '0.825rem' }} className="text-muted text-center">
+                  Overview for <strong>{section}</strong> • <strong>{subject}</strong>
                 </p>
               </div>
             </div>
@@ -447,69 +453,81 @@ export default function TeacherPortal() {
             {/* Roster & Report List */}
             <div className="card md:col-span-2">
               <div className="teacher-roster-toolbar flex flex-col-mob md:flex-row md:items-center justify-between gap-4-mob" style={{ marginBottom: '1.5rem' }}>
-                <h3 style={{ fontSize: '1.25rem' }}>Student Roster</h3>
-                <div className="teacher-search-wrap w-full-mob" style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>Student Submissions</h3>
+                  <p className="text-muted" style={{ fontSize: '0.825rem', margin: '0.2rem 0 0 0' }}>
+                    Showing {filteredStudents.length} submission{filteredStudents.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+
+                <div className="teacher-search-wrap w-full-mob" style={{ position: 'relative', width: '100%', maxWidth: '280px' }}>
                   <input
                     type="text"
                     className="form-input w-full-mob"
-                    placeholder="Search students..."
+                    placeholder="Search student or topic..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    style={{ paddingLeft: '2.5rem' }}
+                    style={{ paddingLeft: '2.5rem', paddingRight: '0.75rem', fontSize: '0.875rem' }}
                   />
-                  <Search size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <Search
+                    size={16}
+                    style={{
+                      position: 'absolute',
+                      left: '0.85rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-subtle)',
+                      pointerEvents: 'none'
+                    }}
+                  />
                 </div>
               </div>
 
               {loading ? (
-                <div style={{ padding: '2rem', textAlign: 'center' }}>
-                  <div className="spinner" style={{ margin: '0 auto' }}></div>
-                  <p className="text-muted" style={{ marginTop: '1rem' }}>Loading section reports...</p>
+                <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                  <div className="spinner" style={{ margin: '0 auto', width: '36px', height: '36px' }}></div>
+                  <p className="text-muted" style={{ marginTop: '1rem', fontSize: '0.9rem' }}>Loading section reports...</p>
                 </div>
               ) : (
                 <>
                   <div className="table-responsive teacher-table-desktop" style={{ overflowX: 'auto', width: '100%' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
                       <thead>
-                        <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                          <th style={{ padding: '0.75rem' }}>Student ID & Name</th>
-                          <th style={{ padding: '0.75rem' }}>Overall Plagiarism</th>
-                          <th style={{ padding: '0.75rem' }}>AI Generated</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'right' }}>Action</th>
+                        <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.825rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <th style={{ padding: '0.75rem 0.5rem' }}>Student & Subject</th>
+                          <th style={{ padding: '0.75rem 0.5rem' }}>Plagiarism Match</th>
+                          <th style={{ padding: '0.75rem 0.5rem' }}>AI Generated</th>
+                          <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredStudents.map((report) => {
                           const isHighRisk = report.plagiarism_score > 30;
                           return (
-                            <tr key={report.submission_id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                              <td style={{ padding: '1rem 0.75rem' }}>
-                                <div style={{ fontWeight: 500 }}>{report.student_name}</div>
-                                <div className="text-muted" style={{ fontSize: '0.875rem' }}>Sub: {report.subject}</div>
+                            <tr key={report.submission_id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.15s' }}>
+                              <td style={{ padding: '0.9rem 0.5rem' }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{report.student_name}</div>
+                                <div className="text-muted" style={{ fontSize: '0.8rem' }}>Course: {report.subject}</div>
                               </td>
-                              <td style={{ padding: '1rem 0.75rem' }}>
-                                <span style={{
-                                  display: 'inline-flex', padding: '0.25rem 0.75rem', borderRadius: '1rem', fontSize: '0.85rem', fontWeight: 600,
-                                  backgroundColor: isHighRisk ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                                  color: isHighRisk ? 'var(--danger-color)' : 'var(--success-color)'
-                                }}>
+                              <td style={{ padding: '0.9rem 0.5rem' }}>
+                                <span className={`badge ${isHighRisk ? 'badge-danger' : 'badge-success'}`}>
                                   {report.plagiarism_score}% Match
                                 </span>
                               </td>
-                              <td style={{ padding: '1rem 0.75rem' }}>
+                              <td style={{ padding: '0.9rem 0.5rem' }}>
                                 <div style={{
                                   fontSize: '0.9rem',
-                                  fontWeight: 500,
+                                  fontWeight: 600,
                                   color: report.ai_score > 50 ? 'var(--danger-color)' : 'var(--text-main)'
                                 }}>
                                   {report.ai_score}%
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{report.label}</div>
                               </td>
-                              <td style={{ padding: '1rem 0.75rem', textAlign: 'right' }}>
+                              <td style={{ padding: '0.9rem 0.5rem', textAlign: 'right' }}>
                                 <button 
                                   className="btn btn-outline" 
-                                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.825rem' }}
                                   onClick={() => handleViewReport(report)}
                                 >
                                   View Report
@@ -522,6 +540,7 @@ export default function TeacherPortal() {
                     </table>
                   </div>
 
+                  {/* Mobile Roster Card List */}
                   <div className="teacher-mobile-list">
                     {filteredStudents.map((report) => {
                       const isHighRisk = report.plagiarism_score > 30;
@@ -529,18 +548,10 @@ export default function TeacherPortal() {
                         <div key={report.submission_id} className="teacher-student-card">
                           <div className="teacher-student-head">
                             <div>
-                              <div style={{ fontWeight: 600 }}>{report.student_name}</div>
-                              <div className="teacher-subject-text">Sub: {report.subject}</div>
+                              <div style={{ fontWeight: 700 }}>{report.student_name}</div>
+                              <div className="teacher-subject-text">Course: {report.subject}</div>
                             </div>
-                            <span style={{
-                              display: 'inline-flex',
-                              padding: '0.2rem 0.65rem',
-                              borderRadius: '999px',
-                              fontSize: '0.78rem',
-                              fontWeight: 600,
-                              backgroundColor: isHighRisk ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                              color: isHighRisk ? 'var(--danger-color)' : 'var(--success-color)'
-                            }}>
+                            <span className={`badge ${isHighRisk ? 'badge-danger' : 'badge-success'}`}>
                               {report.plagiarism_score}% Match
                             </span>
                           </div>
@@ -557,9 +568,9 @@ export default function TeacherPortal() {
                             <div className="teacher-score-cell">
                               <div className="teacher-score-label">Risk Status</div>
                               <div className="teacher-score-value" style={{ color: isHighRisk ? 'var(--danger-color)' : 'var(--success-color)' }}>
-                                {isHighRisk ? 'High' : 'Normal'}
+                                {isHighRisk ? 'High Risk' : 'Normal'}
                               </div>
-                              <div className="teacher-score-note">{isHighRisk ? 'Needs review' : 'Within threshold'}</div>
+                              <div className="teacher-score-note">{isHighRisk ? 'Needs manual check' : 'Passed automated filter'}</div>
                             </div>
                           </div>
 
@@ -568,7 +579,7 @@ export default function TeacherPortal() {
                             style={{ padding: '0.45rem 0.75rem', fontSize: '0.84rem' }}
                             onClick={() => handleViewReport(report)}
                           >
-                            View Report
+                            View Detailed Report
                           </button>
                         </div>
                       );
@@ -576,8 +587,8 @@ export default function TeacherPortal() {
                   </div>
 
                   {hasNoResults && (
-                    <div className="text-center text-muted" style={{ padding: '2rem' }}>
-                      No students found matching your query.
+                    <div className="text-center text-muted" style={{ padding: '3rem 1rem' }}>
+                      <p style={{ margin: 0, fontSize: '0.9rem' }}>No student submissions found matching your query.</p>
                     </div>
                   )}
                 </>
@@ -592,9 +603,9 @@ export default function TeacherPortal() {
           <div className="card md:col-span-2">
             <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>Your Assigned Subjects & Sections</h3>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.25rem' }}>Assigned Courses & Sections</h3>
                 <p className="text-muted" style={{ fontSize: '0.875rem' }}>
-                  These mappings determine which classes you can view and monitor on the dashboard.
+                  These mappings determine which classes appear in your portal for plagiarism monitoring.
                 </p>
               </div>
             </div>
@@ -603,15 +614,15 @@ export default function TeacherPortal() {
               <div style={{
                 textAlign: 'center',
                 padding: '3rem 1.5rem',
-                border: '2px dashed var(--border-color)',
+                border: '1.5px dashed var(--border-color)',
                 borderRadius: 'var(--radius-lg)',
-                backgroundColor: 'rgba(0, 0, 0, 0.01)'
+                backgroundColor: 'var(--surface-subtle)'
               }}>
-                <p className="text-muted" style={{ marginBottom: '1rem' }}>No subjects or sections assigned yet.</p>
-                <p style={{ fontSize: '0.85rem' }} className="text-muted">Use the form on the right to add your first subject mapping.</p>
+                <p className="text-muted" style={{ marginBottom: '0.5rem', fontWeight: 600 }}>No courses assigned yet</p>
+                <p style={{ fontSize: '0.85rem' }} className="text-muted">Use the form on the right to assign your first course and section.</p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 {editingSubjects.map((ss, idx) => (
                   <div
                     key={idx}
@@ -619,8 +630,8 @@ export default function TeacherPortal() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '1rem',
-                      backgroundColor: 'var(--bg-color)',
+                      padding: '0.9rem 1.15rem',
+                      backgroundColor: 'var(--surface-color)',
                       border: '1px solid var(--border-color)',
                       borderRadius: 'var(--radius-md)',
                       transition: 'var(--transition)'
@@ -628,27 +639,27 @@ export default function TeacherPortal() {
                   >
                     <div>
                       <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{ss.subject}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--primary-color)', fontWeight: 500 }}>Section: {ss.section}</div>
+                      <div style={{ fontSize: '0.825rem', color: 'var(--primary-color)', fontWeight: 600, marginTop: '0.15rem' }}>
+                        Section: {ss.section}
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleDeleteSubjectSection(idx)}
                       style={{
-                        padding: '0.5rem',
+                        padding: '0.45rem',
                         color: 'var(--danger-color)',
-                        backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                        backgroundColor: 'var(--danger-light)',
                         borderRadius: 'var(--radius-sm)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
                         transition: 'var(--transition)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.05)';
                       }}
                       title="Remove Mapping"
                     >
-                      <Trash2 size={18} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 ))}
@@ -665,29 +676,15 @@ export default function TeacherPortal() {
               gap: '1rem'
             }}>
               {saveSuccess && (
-                <div style={{
-                  backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                  color: 'var(--success-color)',
-                  border: '1px solid rgba(16, 185, 129, 0.25)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '0.75rem 1rem',
-                  fontSize: '0.9rem',
-                  fontWeight: 500
-                }}>
-                  {saveSuccess}
+                <div className="alert alert-success">
+                  <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+                  <span>{saveSuccess}</span>
                 </div>
               )}
               {saveError && (
-                <div style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                  color: 'var(--danger-color)',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '0.75rem 1rem',
-                  fontSize: '0.9rem',
-                  fontWeight: 500
-                }}>
-                  {saveError}
+                <div className="alert alert-danger">
+                  <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                  <span>{saveError}</span>
                 </div>
               )}
               
@@ -697,18 +694,17 @@ export default function TeacherPortal() {
                   className="btn btn-primary"
                   onClick={handleSaveSubjects}
                   disabled={savingSubjects}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                   {savingSubjects ? (
                     <>
-                      <span className="spinner" style={{ width: '16px', height: '16px', border: '2px solid #fff', borderTop: '2px solid transparent', display: 'inline-block' }}></span>
-                      Saving...
+                      <div className="spinner spinner-white" style={{ width: '16px', height: '16px' }}></div>
+                      <span>Saving Assignments...</span>
                     </>
                   ) : (
-                    <>
-                      <Save size={18} />
-                      Save Assignments
-                    </>
+                    <div className="flex items-center gap-2">
+                      <Save size={16} />
+                      <span>Save Changes</span>
+                    </div>
                   )}
                 </button>
               </div>
@@ -717,10 +713,10 @@ export default function TeacherPortal() {
 
           {/* Form Card for Adding New Mappings */}
           <div className="card md:col-span-1">
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Add New Mapping</h3>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '1.25rem' }}>Add Course Assignment</h3>
             
             <div className="form-group">
-              <label className="form-label">Subject</label>
+              <label className="form-label">Subject / Course</label>
               <select
                 className="form-select"
                 value={newSubjectText}
@@ -738,19 +734,19 @@ export default function TeacherPortal() {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Enter custom subject name"
+                  placeholder="Enter course name"
                   value={customSubjectText}
                   onChange={e => setCustomSubjectText(e.target.value)}
                 />
               </div>
             )}
 
-            <div className="form-group" style={{ marginTop: '1.25rem' }}>
+            <div className="form-group">
               <label className="form-label">Section Code</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. 5A, 5B, A, B"
+                placeholder="e.g. 4I1, CSE-A, A, B"
                 value={newSectionText}
                 onChange={e => setNewSectionText(e.target.value)}
               />
@@ -760,9 +756,9 @@ export default function TeacherPortal() {
               type="button"
               className="btn btn-outline w-full"
               onClick={handleAddSubjectSection}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '2rem', width: '100%' }}
+              style={{ marginTop: '1.5rem', width: '100%' }}
             >
-              <Plus size={18} /> Add Mapping
+              <Plus size={16} /> Add to List
             </button>
           </div>
         </div>
@@ -772,73 +768,123 @@ export default function TeacherPortal() {
       {isModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: '1rem'
         }}>
           <div className="card glass-panel" style={{
-            width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto',
-            position: 'relative', padding: '2rem'
+            width: '100%', maxWidth: '780px', maxHeight: '90vh', overflowY: 'auto',
+            position: 'relative', padding: '2rem', borderRadius: 'var(--radius-xl)'
           }}>
             <button 
               onClick={() => setIsModalOpen(false)}
-              style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', color: 'var(--text-muted)' }}
+              style={{
+                position: 'absolute',
+                top: '1.25rem',
+                right: '1.25rem',
+                background: 'var(--surface-hover)',
+                color: 'var(--text-muted)',
+                borderRadius: '50%',
+                padding: '0.4rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+              aria-label="Close dialog"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
 
             {modalLoading ? (
-              <div style={{ padding: '4rem', textAlign: 'center' }}>
-                <div className="spinner" style={{ margin: '0 auto' }}></div>
-                <p className="text-muted mt-4">Loading report details...</p>
+              <div style={{ padding: '4rem 1rem', textAlign: 'center' }}>
+                <div className="spinner" style={{ margin: '0 auto', width: '40px', height: '40px' }}></div>
+                <p className="text-muted" style={{ marginTop: '1rem', fontSize: '0.9rem' }}>Loading report details...</p>
               </div>
             ) : modalError ? (
-              <div style={{ color: 'var(--danger-color)', padding: '2rem', textAlign: 'center' }}>
-                {modalError}
+              <div className="alert alert-danger" style={{ margin: '2rem 0' }}>
+                <AlertCircle size={18} />
+                <span>{modalError}</span>
               </div>
             ) : selectedReportDetail ? (
               <div>
-                <h2 style={{ marginBottom: '0.5rem' }}>Assignment Report</h2>
-                <div className="text-muted" style={{ marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <h2 style={{ marginBottom: '0.35rem', fontWeight: 800 }}>Assignment Report</h2>
+                <div className="text-muted" style={{ marginBottom: '1.75rem', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', fontSize: '0.9rem' }}>
                   <span><strong style={{ color: 'var(--text-main)' }}>Student:</strong> {selectedReportDetail.student_name}</span>
-                  <span><strong style={{ color: 'var(--text-main)' }}>Subject:</strong> {selectedReportDetail.subject}</span>
+                  <span>•</span>
+                  <span><strong style={{ color: 'var(--text-main)' }}>Course:</strong> {selectedReportDetail.subject}</span>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4" style={{ marginBottom: '2rem' }}>
-                  <div style={{ padding: '1.5rem', backgroundColor: 'rgba(239, 68, 68, 0.05)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Plagiarism Score</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 700, color: selectedReportDetail.plagiarism_score > 30 ? 'var(--danger-color)' : 'var(--success-color)' }}>
+                <div className="grid md:grid-cols-2 gap-4" style={{ marginBottom: '1.75rem' }}>
+                  <div style={{
+                    padding: '1.25rem',
+                    backgroundColor: selectedReportDetail.plagiarism_score > 30 ? 'var(--danger-light)' : 'var(--success-light)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: `1px solid ${selectedReportDetail.plagiarism_score > 30 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`
+                  }}>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                      Plagiarism Overlap
+                    </div>
+                    <div style={{
+                      fontSize: '2.25rem',
+                      fontWeight: 800,
+                      color: selectedReportDetail.plagiarism_score > 30 ? 'var(--danger-color)' : 'var(--success-color)',
+                      lineHeight: 1
+                    }}>
                       {selectedReportDetail.plagiarism_score}%
                     </div>
                   </div>
                   
-                  <div style={{ padding: '1.5rem', backgroundColor: 'rgba(79, 70, 229, 0.05)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>AI Logic Confidence</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 700, color: selectedReportDetail.ai_score > 50 ? 'var(--danger-color)' : 'var(--primary-color)' }}>
+                  <div style={{
+                    padding: '1.25rem',
+                    backgroundColor: selectedReportDetail.ai_score > 50 ? 'var(--danger-light)' : 'var(--primary-light)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: `1px solid ${selectedReportDetail.ai_score > 50 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(79, 70, 229, 0.25)'}`
+                  }}>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                      AI Logic Confidence
+                    </div>
+                    <div style={{
+                      fontSize: '2.25rem',
+                      fontWeight: 800,
+                      color: selectedReportDetail.ai_score > 50 ? 'var(--danger-color)' : 'var(--primary-color)',
+                      lineHeight: 1
+                    }}>
                       {selectedReportDetail.ai_score}%
                     </div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, marginTop: '0.25rem' }}>{selectedReportDetail.label}</div>
+                    <div style={{ fontSize: '0.825rem', fontWeight: 600, marginTop: '0.35rem', color: 'var(--text-main)' }}>
+                      Classification: {selectedReportDetail.label}
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ marginBottom: '2rem' }}>
-                  <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Extracted Text Preview</h3>
+                <div style={{ marginBottom: '1.75rem' }}>
+                  <h4 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: 700 }}>Extracted Text Content</h4>
                   <div style={{ 
-                    padding: '1.5rem', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius-md)', 
-                    border: '1px solid var(--border-color)', maxHeight: '200px', overflowY: 'auto',
-                    fontSize: '0.9rem', lineHeight: '1.6', whiteSpace: 'pre-wrap', color: 'var(--text-muted)'
+                    padding: '1.25rem',
+                    backgroundColor: 'var(--bg-color)',
+                    borderRadius: 'var(--radius-md)', 
+                    border: '1px solid var(--border-color)',
+                    maxHeight: '220px',
+                    overflowY: 'auto',
+                    fontSize: '0.875rem',
+                    lineHeight: '1.6',
+                    whiteSpace: 'pre-wrap',
+                    color: 'var(--text-main)',
+                    fontFamily: 'inherit'
                   }}>
-                    {selectedReportDetail.processed_text || "No text could be extracted."}
+                    {selectedReportDetail.processed_text || "No extracted text preview available."}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
                   <button 
                     className="btn btn-primary"
                     onClick={() => handleDownload(selectedReportDetail.submission_id, selectedReportDetail.student_name)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                   >
-                    <Download size={18} /> Download Original File
+                    <Download size={16} />
+                    <span>Download Original File</span>
                   </button>
                 </div>
               </div>
@@ -850,3 +896,4 @@ export default function TeacherPortal() {
     </div>
   );
 }
+

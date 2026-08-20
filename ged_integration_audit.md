@@ -12,7 +12,7 @@ The system is built as a decoupled, multi-tiered application:
 *   **Frontend**: A modern Single Page Application (SPA) built using **React.js (Vite)**, styled with **Tailwind CSS**, and utilizing **Recharts** for institutional analytics.
 *   **Backend API**: A high-performance RESTful service built on **FastAPI**, with **SQLAlchemy** ORM mapping data to an **SQLite** database (`plagiarism.db`).
 *   **Asynchronous Processing**: Background tasks are decoupled using **Celery** with **Redis** as a message broker.
-*   **Machine Learning (NLP/Vision)**: A hybrid AI/ML subsystem implementing two-layer AI detection (statistical analysis with `DistilGPT-2` + stylistic heuristics), peer-to-peer plagiarism checking (`TF-IDF` + Cosine similarity), and document text/visual preprocessing (using `OpenCV`, `Google Cloud Vision API`, and `EasyOCR` fallbacks).
+*   **Machine Learning (NLP/Vision)**: A hybrid AI/ML subsystem implementing two-layer AI detection (statistical analysis with `DistilGPT-2` + stylistic heuristics), peer-to-peer plagiarism checking (`TF-IDF` + Cosine similarity), and document text/visual preprocessing (using `OpenCV`, `TrOCR`, and `EasyOCR` local pipelines).
 
 ### 2. Folder Structure
 The repository is organized as follows:
@@ -29,7 +29,7 @@ AI based Assignment Plagiarism Detector/
 │   │   │   ├── ai_classifier.pkl   # Pickled RandomForest Model
 │   │   │   ├── semantic_engine.py   # Style & Transition Heuristic Evaluator
 │   │   │   └── statistical_engine.py# perplexity, entropy, burstiness using DistilGPT-2
-│   │   ├── ocr_service.py           # OpenCV processing + Cloud Vision/EasyOCR
+│   │   ├── ocr_service.py           # OpenCV processing + TrOCR / EasyOCR pipeline
 │   │   ├── plagiarism.py            # Cosine similarity matching
 │   │   ├── subject_validation.py    # Syllabus/keyword matching relevance check
 │   │   └── text_extraction.py       # DOCX, TXT, PDF parser (with OCR fallback)
@@ -77,7 +77,7 @@ graph TD
     Celery -->|1. Extract Text| Extraction[services/text_extraction.py]
     Extraction -->|Scanned docs| OCR[services/ocr_service.py]
     OCR -->|Clean Image| OpenCV[OpenCV / Pillow]
-    OCR -->|Extract Text| CloudVision[Google Cloud Vision / EasyOCR]
+    OCR -->|Extract Text| TrOCR_Engine[Microsoft TrOCR / EasyOCR]
     
     Celery -->|2. Check Topic| Subject_Val[services/subject_validation.py]
     Celery -->|3. Detect AI| AI_Detect[services/ai_detection.py]
@@ -122,7 +122,7 @@ The step-by-step execution path of a student submitting an assignment until pred
     *   Calls `extract_text()` from `backend/services/text_extraction.py`.
 5.  **Text Preprocessing & Extraction**:
     *   If it is a `.txt` or `.docx`, text is extracted directly.
-    *   If it is a `.pdf`, it attempts digital extraction. If the word count is $<20$, it falls back to OCR: converting pages to JPEGs and running Google Cloud Vision (or local EasyOCR) to extract handwritten/scanned text.
+    *   If it is a `.pdf`, it attempts digital extraction. If the word count is $<20$, it falls back to OCR: converting pages to JPEGs and running TrOCR (or local EasyOCR) to extract handwritten/scanned text.
     *   A visual perceptual hash (`dHash`) is computed for images to detect visual plagiarism.
 6.  **Subject Relevance Check**: The extracted text is run through `backend/services/subject_validation.py` (`validate_subject_relevance` function) to check that key concepts match the selected course syllabus keywords.
 7.  **AI Detection Service Call**: The cleaned text is passed to `backend/services/ai_detection.py` (`analyze_ai_content` function).

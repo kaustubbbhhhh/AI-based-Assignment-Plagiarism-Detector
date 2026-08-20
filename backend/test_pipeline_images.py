@@ -14,7 +14,7 @@ import time
 # Add backend to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Load .env so GOOGLE_APPLICATION_CREDENTIALS is set
+# Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 

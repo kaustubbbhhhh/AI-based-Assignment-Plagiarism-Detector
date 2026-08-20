@@ -29,6 +29,10 @@ class Report(Base):
     # ── Plagiarism Scores ─────────────────────────────────────
     plagiarism_score = Column(Float, nullable=False, default=0.0)     # 0-100%
 
+    # ── OCR & Document Quality Scores ─────────────────────────
+    ocr_score = Column(Float, nullable=True, default=100.0)           # 0-100% (confidence/legibility)
+    ocr_status = Column(String(100), nullable=True, default="Accepted") # e.g. "Accepted - High Legibility"
+
     # ── Processed Insights ────────────────────────────────────
     processed_text = Column(Text, nullable=True)           # cleaned extracted text
     word_count = Column(Integer, nullable=True)
@@ -41,4 +45,4 @@ class Report(Base):
     submission = relationship("Submission", back_populates="report")
 
     def __repr__(self):
-        return f"<Report(id={self.id}, ai={self.ai_score}%, plag={self.plagiarism_score}%)>"
+        return f"<Report(id={self.id}, ai={self.ai_score}%, plag={self.plagiarism_score}%, ocr={self.ocr_score}%)>"

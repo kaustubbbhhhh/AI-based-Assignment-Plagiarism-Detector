@@ -16,7 +16,7 @@ import sys
 HOST = "localhost"
 PORT = 3306
 USER = "root"
-PASSWORD = "password"
+PASSWORD = "12345678"
 DB_NAME = "plagiarism_db"
 
 
@@ -47,27 +47,27 @@ def main():
             f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
         )
         conn.commit()
-        print(f"✅ Database '{DB_NAME}' created (or already exists).")
+        print(f"[OK] Database '{DB_NAME}' created (or already exists).")
 
         # Verify the database exists
         cursor.execute("SHOW DATABASES")
         databases = [row[0] for row in cursor.fetchall()]
         if DB_NAME in databases:
-            print(f"✅ Verified: '{DB_NAME}' is listed in SHOW DATABASES.")
+            print(f"[OK] Verified: '{DB_NAME}' is listed in SHOW DATABASES.")
         else:
-            print(f"⚠️  Warning: '{DB_NAME}' not found after creation attempt.")
+            print(f"[WARNING] '{DB_NAME}' not found after creation attempt.")
 
         cursor.close()
         conn.close()
 
-        print(f"\n🚀 Next steps:")
-        print(f"   1. Ensure your backend/.env has: DATABASE_URL=mysql://root:password@localhost:3306/{DB_NAME}")
+        print(f"\n[NEXT STEPS]")
+        print(f"   1. Ensure your backend/.env has: DATABASE_URL=mysql://root:12345678@localhost:3306/{DB_NAME}")
         print(f"   2. Start the backend:  python -m uvicorn main:app --port 8000 --reload")
         print(f"   3. Tables will be auto-created on startup via SQLAlchemy create_all().")
         print(f"   4. Seed demo users:    python seed_users.py")
 
     except Exception as e:
-        print(f"\n❌ Error during database creation: {e}")
+        print(f"\n[ERROR] Error during database creation: {e}")
         sys.exit(1)
 
 

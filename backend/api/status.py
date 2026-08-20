@@ -25,7 +25,7 @@ def get_submission_status(
 ):
     """
     Poll the current processing status of a submission.
-    If completed, includes the final scores in the response.
+    Includes OCR score, AI score, Plagiarism score, metadata, and lock state.
     """
 
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
@@ -38,7 +38,15 @@ def get_submission_status(
     # ── Build base response ───────────────────────────────────
     response = SubmissionStatusResponse(
         submission_id=submission.id,
+        assignment_title=submission.assignment_title or "Assignment 1",
+        subject=submission.subject,
+        filename=submission.filename,
         status=submission.status.value,
+        is_locked=bool(submission.is_locked),
+        locked_at=submission.locked_at,
+        verification_token=submission.verification_token,
+        current_step=1,
+        total_steps=7,
     )
 
     # ── Check Celery task state for progress info ─────────────
@@ -48,31 +56,50 @@ def get_submission_status(
             from tasks.celery_app import celery_app
             task_result = AsyncResult(submission.celery_task_id, app=celery_app)
             if task_result.state == "PROGRESS" and task_result.info:
-                response.progress = task_result.info.get("progress", "Processing...")
+                info = task_result.info
+                response.progress = info.get("progress", "Processing...")
+                response.stage = info.get("stage", "processing")
+                response.current_step = info.get("current_step", 2)
+                response.total_steps = info.get("total_steps", 7)
             elif task_result.state == "PENDING":
-                response.progress = "Waiting in queue..."
+                response.progress = "Waiting in task queue..."
+                response.stage = "queued"
+                response.current_step = 1
             elif task_result.state == "STARTED":
-                response.progress = "Task started..."
+                response.progress = "Task started by worker..."
+                response.stage = "started"
+                response.current_step = 1
         except Exception:
             # Redis not available — skip Celery status check
             pass
 
-    # ── If completed, attach scores ───────────────────────────
+    # ── If completed, attach scores & extracted text ──────────
     if submission.status.value == "completed":
         report = db.query(Report).filter(Report.submission_id == submission_id).first()
         if report:
             response.ai_score = report.ai_score
             response.plagiarism_score = report.plagiarism_score
+            response.ocr_score = report.ocr_score if report.ocr_score is not None else 100.0
+            response.ocr_status = report.ocr_status or "Accepted"
             response.label = report.label.value
-            response.progress = "Completed"
+            response.word_count = report.word_count
+            response.sentence_count = report.sentence_count
+            response.processed_text_preview = (report.processed_text[:400] + "...") if report.processed_text else ""
+            response.progress = "Analysis Completed & Verified"
+            response.stage = "completed"
+            response.current_step = 7
+            response.total_steps = 7
 
     elif submission.status.value == "failed":
-        response.progress = "Processing failed"
+        response.progress = "Processing failed. Document could not be processed."
+        response.stage = "failed"
 
     elif submission.status.value == "processing":
         response.progress = response.progress or "Analyzing content..."
+        response.stage = response.stage or "processing"
 
     elif submission.status.value == "pending":
         response.progress = "Waiting in queue..."
+        response.stage = "pending"
 
     return response

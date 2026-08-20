@@ -44,6 +44,21 @@ class UserLogin(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_link: Optional[str] = None
+
+
+
 # ── Response Schemas ──────────────────────────────────────────
 
 class UserResponse(BaseModel):

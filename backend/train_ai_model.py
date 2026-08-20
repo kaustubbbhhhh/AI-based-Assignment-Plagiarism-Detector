@@ -1,96 +1,78 @@
+"""
+Train AI Detection Model
+==========================
+Wrapper script to retrain the AI detection model using the full data pipeline.
+
+Usage:
+    python train_ai_model.py           # Run full pipeline (Phase 1-5)
+    python train_ai_model.py --phase N # Run specific phase only
+
+The trained model (rf_model_v2.pkl, scaler_v2.pkl) is automatically copied
+to backend/services/ml_services/ after successful training.
+"""
+
 import os
-import pickle
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from datasets import load_dataset
 import sys
+import shutil
 
-# Ensure backend directory is in path so we can import services
-sys.path.append(os.path.dirname(__file__))
+# Ensure backend directory is in path
+sys.path.insert(0, os.path.dirname(__file__))
 
-from services.ml_services.statistical_engine import analyze_statistics
+PIPELINE_DIR = os.path.join(os.path.dirname(__file__), "data_pipeline")
+ML_SERVICES_DIR = os.path.join(os.path.dirname(__file__), "services", "ml_services")
+OUTPUT_DIR = os.path.join(PIPELINE_DIR, "output")
 
-import urllib.request
-import json
 
-def fetch_real_data(num_samples_per_class=150):
-    print("Downloading Hello-SimpleAI/HC3 dataset via raw JSONL...")
-    url = "https://huggingface.co/datasets/Hello-SimpleAI/HC3/resolve/main/all.jsonl"
-    
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    
-    X = []
-    y = []
-    count = 0
-    
-    try:
-        with urllib.request.urlopen(req) as response:
-            print(f"Extracting statistical features for {num_samples_per_class * 2} samples using DistilGPT-2...")
-            
-            for line in response:
-                if count >= num_samples_per_class:
-                    break
-                    
-                row = json.loads(line.decode('utf-8'))
-                
-                # Human text
-                human_text = row.get("human_answers", [""])[0] if row.get("human_answers") else ""
-                if len(human_text) > 50:
-                    stats_human = analyze_statistics(human_text)
-                    X.append([
-                        stats_human["mean_perplexity"],
-                        stats_human["perplexity_variance"],
-                        stats_human["entropy"]
-                    ])
-                    y.append(0)
-                    
-                # AI text
-                ai_text = row.get("chatgpt_answers", [""])[0] if row.get("chatgpt_answers") else ""
-                if len(ai_text) > 50:
-                    stats_ai = analyze_statistics(ai_text)
-                    X.append([
-                        stats_ai["mean_perplexity"],
-                        stats_ai["perplexity_variance"],
-                        stats_ai["entropy"]
-                    ])
-                    y.append(1)
-                    
-                count += 1
-                if count % 10 == 0:
-                    print(f"Processed {count}/{num_samples_per_class} pairs...")
-                    
-    except Exception as e:
-        print(f"Failed to download dataset: {e}")
-        # Fallback to generating dummy synthetic text just to have something to train on
-        print("Falling back to minimal text samples...")
-        dummy_texts = [("I am a human and I like to write in a very weird and chaotic way. This is because I am human.", 0), ("As an AI language model, I generate text based on patterns learned during training. My responses are consistent.", 1)]
-        for text, label in dummy_texts:
-            s = analyze_statistics(text)
-            X.append([s["mean_perplexity"], s["perplexity_variance"], s["entropy"]])
-            y.append(label)
+def run_pipeline(start_phase=1):
+    """Run the data pipeline from the specified phase."""
 
-    return np.array(X), np.array(y)
+    phases = {
+        1: ("Phase 1: Data Cleaning", "phase1_clean"),
+        2: ("Phase 2: Label Encoding & Balancing", "phase2_label"),
+        3: ("Phase 3: Feature Extraction", "phase3_features"),
+        4: ("Phase 4: Feature Scaling & Split", "phase4_split"),
+        5: ("Phase 5: Model Training & Evaluation", "phase5_train"),
+    }
+
+    for phase_num in range(start_phase, 6):
+        name, module_name = phases[phase_num]
+        print(f"\n{'#' * 60}")
+        print(f"# {name}")
+        print(f"{'#' * 60}\n")
+
+        module = __import__(f"data_pipeline.{module_name}", fromlist=[f"run_phase{phase_num}"])
+        run_func = getattr(module, f"run_phase{phase_num}")
+        run_func()
+
+    # --- Deploy model to ml_services ---
+    print(f"\n{'#' * 60}")
+    print(f"# Deploying model to live system")
+    print(f"{'#' * 60}\n")
+
+    files_to_copy = {
+        "rf_model.pkl": "rf_model_v2.pkl",
+        "scaler.pkl": "scaler_v2.pkl",
+        "feature_names.json": "feature_names.json",
+    }
+
+    for src_name, dst_name in files_to_copy.items():
+        src = os.path.join(OUTPUT_DIR, src_name)
+        dst = os.path.join(ML_SERVICES_DIR, dst_name)
+        if os.path.exists(src):
+            shutil.copy2(src, dst)
+            print(f"  Copied: {src_name} -> {dst_name}")
+        else:
+            print(f"  WARNING: {src_name} not found, skipping.")
+
+    print(f"\nTraining and deployment complete!")
+    print(f"Restart the backend server to load the new model.")
+
 
 if __name__ == "__main__":
-    print("=== Training AI Detection Model on Real Data ===")
-    
-    # Use 150 pairs = 300 samples total.
-    X, y = fetch_real_data(num_samples_per_class=150)
-    
-    print(f"Dataset compiled! Total valid samples: {len(X)}")
-    print("Training RandomForestClassifier...")
-    clf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
-    clf.fit(X, y)
+    import argparse
+    parser = argparse.ArgumentParser(description="Train AI Detection Model")
+    parser.add_argument("--phase", type=int, default=1,
+                        help="Start from this phase (1-5, default: 1)")
+    args = parser.parse_args()
 
-    score = clf.score(X, y)
-    print(f"Training accuracy: {score * 100:.2f}%")
-
-    # Save model
-    save_path = os.path.join(os.path.dirname(__file__), "services", "ml_services", "ai_classifier.pkl")
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    
-    with open(save_path, "wb") as f:
-        pickle.dump(clf, f)
-        
-    print(f"Model saved to {save_path}")
-    print("Training complete! The statistical engine will now use real-world calibrated probabilities.")
+    run_pipeline(start_phase=args.phase)

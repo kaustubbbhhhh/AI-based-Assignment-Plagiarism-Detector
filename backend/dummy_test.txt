@@ -1,2 +1,0 @@
-This is a simple text file to test the reading document layer.
-It should easily extract these 20 words without any issues.

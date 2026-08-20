@@ -12,18 +12,44 @@ from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 logger = logging.getLogger(__name__)
 
-# Load globally to avoid reloading on every request
-# We use distilgpt2 as it's lightweight but good enough for statistical patterns
-try:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = GPT2TokenizerFast.from_pretrained("distilgpt2")
-    model = GPT2LMHeadModel.from_pretrained("distilgpt2").to(device)
-    model.eval()
-    logger.info(f"Loaded distilgpt2 for Statistical Engine on {device}")
-except Exception as e:
-    logger.error(f"Failed to load distilgpt2: {e}")
-    tokenizer = None
-    model = None
+# Silence noisy HuggingFace and HTTP loggers
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+_device = None
+_tokenizer = None
+_model = None
+_gpt2_initialized = False
+
+
+def get_gpt2_model():
+    """Lazy-load distilgpt2 model and tokenizer (offline-first)."""
+    global _device, _tokenizer, _model, _gpt2_initialized
+    if _gpt2_initialized:
+        return _tokenizer, _model, _device
+
+    _gpt2_initialized = True
+    try:
+        _device = "cuda" if torch.cuda.is_available() else "cpu"
+        try:
+            # Try offline cache first to avoid remote HTTP HEAD/GET checks
+            _tokenizer = GPT2TokenizerFast.from_pretrained("distilgpt2", local_files_only=True)
+            _model = GPT2LMHeadModel.from_pretrained("distilgpt2", local_files_only=True).to(_device)
+        except Exception:
+            # Fallback to online download if cache is empty
+            _tokenizer = GPT2TokenizerFast.from_pretrained("distilgpt2")
+            _model = GPT2LMHeadModel.from_pretrained("distilgpt2").to(_device)
+
+        _model.eval()
+        logger.info(f"Loaded distilgpt2 for Statistical Engine on {_device}")
+    except Exception as e:
+        logger.error(f"Failed to load distilgpt2: {e}")
+        _tokenizer = None
+        _model = None
+
+    return _tokenizer, _model, _device
+
 
 # Load the trained Scikit-learn Classifier
 try:
@@ -48,6 +74,7 @@ def analyze_statistics(text: str) -> dict:
     if not text or len(text.strip()) < 50:
         return _fallback_stats()
 
+    tokenizer, model, device = get_gpt2_model()
     if model is None or tokenizer is None:
         logger.warning("Statistical engine model not loaded. Using fallback.")
         return _fallback_stats()

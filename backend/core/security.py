@@ -54,3 +54,33 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+def create_password_reset_token(user_id: int, email: str, current_pwd_hash: str) -> str:
+    """
+    Create a signed JWT token specifically for password reset.
+    Valid for 15 minutes. Includes a signature slice of current password hash
+    to invalidate old tokens immediately once password is reset.
+    """
+    pwd_sig = current_pwd_hash[-12:] if current_pwd_hash else ""
+    data = {
+        "sub": str(user_id),
+        "email": email,
+        "type": "password_reset",
+        "pwd_sig": pwd_sig,
+    }
+    return create_access_token(data=data, expires_delta=timedelta(minutes=15))
+
+
+def verify_password_reset_token(token: str) -> Optional[dict]:
+    """
+    Decode and verify a password reset token.
+    Returns payload if valid and type == 'password_reset', else None.
+    """
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+    if payload.get("type") != "password_reset":
+        return None
+    return payload
+
