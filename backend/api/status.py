@@ -17,6 +17,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Status"])
 
 
+def _normalize(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+def _teacher_can_access_submission(current_user: User, section: str, subject: str) -> bool:
+    mappings = current_user.subjects_sections or []
+    if not mappings:
+        return False
+    target_section = _normalize(section)
+    target_subject = _normalize(subject)
+    for entry in mappings:
+        if _normalize(entry.get("section")) == target_section and _normalize(entry.get("subject")) == target_subject:
+            return True
+    return False
+
+
 @router.get("/status/{submission_id}", response_model=SubmissionStatusResponse)
 def get_submission_status(
     submission_id: int,
@@ -34,6 +50,18 @@ def get_submission_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Submission #{submission_id} not found.",
         )
+    if current_user.role.value == "student" and submission.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this submission status.",
+        )
+    if current_user.role.value == "teacher":
+        student = db.query(User).filter(User.id == submission.student_id).first()
+        if not student or not _teacher_can_access_submission(current_user, student.section, submission.subject):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teacher is not assigned to this submission's section/subject.",
+            )
 
     # ── Build base response ───────────────────────────────────
     response = SubmissionStatusResponse(

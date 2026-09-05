@@ -2,10 +2,12 @@
 Celery application instance configured with Redis broker and backend.
 """
 
+import logging
 from celery import Celery
 from core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "plagiarism_detector",
@@ -16,7 +18,7 @@ celery_app = Celery(
 
 # ── Celery Configuration ──────────────────────────────────────
 celery_app.conf.update(
-    task_always_eager=True,                 # Run tasks synchronously locally (no Redis required)
+    task_always_eager=settings.CELERY_TASK_ALWAYS_EAGER,
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
@@ -27,3 +29,8 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,           # one task at a time per worker
     result_expires=3600,                    # results expire after 1 hour
 )
+
+if settings.CELERY_TASK_ALWAYS_EAGER:
+    logger.warning("Celery is running in eager mode (synchronous task execution).")
+else:
+    logger.info("Celery is running in async queue mode.")

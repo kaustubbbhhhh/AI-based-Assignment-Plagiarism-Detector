@@ -5,8 +5,10 @@ Prevents students from uploading irrelevant files (e.g., Physics assignments to 
 """
 
 import logging
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 # Dictionary of core concepts/keywords for each supported subject.
 SUBJECT_KEYWORDS = {
@@ -107,19 +109,29 @@ def validate_subject_relevance(text: str, subject: str) -> dict:
     # (This is a low threshold to prevent false positives)
     min_required = 2
     
-    # TEMPORARY BYPASS: Since the dynamic syllabus/context upload feature is not yet built,
-    # hardcoded keywords are too strict and causing false rejections for test files.
-    # We will log the finding but always return valid for now.
     if len(matched_keywords) >= min_required:
         return {
             "is_valid": True, 
             "confidence": min(1.0, len(matched_keywords) / len(keywords)), 
             "reason": f"Found relevant keywords: {', '.join(matched_keywords[:3])}..."
         }
-    else:
-        logger.warning(f"Subject mismatch detected but allowed (Context engine WIP). Expected '{subject}', found keywords: {matched_keywords}")
+
+    confidence = len(matched_keywords) / max(1, len(keywords))
+    if settings.SUBJECT_VALIDATION_STRICT:
+        logger.warning(
+            f"Subject mismatch rejected. Expected '{subject}', found keywords: {matched_keywords}"
+        )
         return {
-            "is_valid": True,  # Changed from False to True
-            "confidence": 0.8, 
-            "reason": f"Allowed by default pending Context Engine implementation."
+            "is_valid": False,
+            "confidence": confidence,
+            "reason": f"Subject mismatch detected for '{subject}'."
         }
+
+    logger.warning(
+        f"Subject mismatch allowed by policy (SUBJECT_VALIDATION_STRICT=false). Expected '{subject}', found keywords: {matched_keywords}"
+    )
+    return {
+        "is_valid": True,
+        "confidence": confidence,
+        "reason": "Low subject match allowed by non-strict validation policy."
+    }

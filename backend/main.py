@@ -89,6 +89,8 @@ def _ensure_schema_columns():
 async def lifespan(app: FastAPI):
     """Create database tables on startup, cleanup on shutdown."""
     logger.info("🚀 Starting PlagiarismAI Backend...")
+    if settings.APP_ENV.lower() != "development" and settings.SECRET_KEY == "dev-secret-key-do-not-use-in-production":
+        raise RuntimeError("Insecure SECRET_KEY is not allowed outside development.")
 
     # Create uploads directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -121,17 +123,7 @@ app = FastAPI(
 # ── CORS Middleware ───────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
-    ],
-    allow_origin_regex=r"http://.*",
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

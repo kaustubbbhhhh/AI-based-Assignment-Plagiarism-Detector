@@ -19,6 +19,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Reports"])
 
 
+def _normalize(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+def _teacher_can_access_section_subject(current_user: User, section: str, subject: str = None) -> bool:
+    mappings = current_user.subjects_sections or []
+    if not mappings:
+        return False
+    target_section = _normalize(section)
+    target_subject = _normalize(subject) if subject else None
+    for entry in mappings:
+        mapped_section = _normalize(entry.get("section"))
+        mapped_subject = _normalize(entry.get("subject"))
+        if mapped_section == target_section and (target_subject is None or mapped_subject == target_subject):
+            return True
+    return False
+
+
 @router.get("/report/{submission_id}", response_model=ReportResponse)
 def get_report(
     submission_id: int,
@@ -26,6 +44,25 @@ def get_report(
     db: Session = Depends(get_db),
 ):
     """Fetch the full analysis report for a specific submission."""
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Submission #{submission_id} not found.",
+        )
+
+    if current_user.role.value == "student" and submission.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this report.",
+        )
+    if current_user.role.value == "teacher":
+        student = db.query(User).filter(User.id == submission.student_id).first()
+        if not student or not _teacher_can_access_section_subject(current_user, student.section, submission.subject):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teacher is not assigned to this submission's section/subject.",
+            )
 
     report = db.query(Report).filter(Report.submission_id == submission_id).first()
     if not report:
@@ -73,12 +110,18 @@ def get_reports_by_section(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only teachers and HOD can access section reports.",
         )
+    if current_user.role.value == "teacher":
+        if not _teacher_can_access_section_subject(current_user, section, subject):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teacher is not assigned to this section/subject.",
+            )
 
     query = (
         db.query(Report, Submission, User)
         .join(Submission, Report.submission_id == Submission.id)
         .join(User, Submission.student_id == User.id)
-        .filter(User.section.ilike(f"%{section}%"))
+        .filter(User.section == section)
     )
 
     # ── Subject filter (fixes the loophole) ───────────────────

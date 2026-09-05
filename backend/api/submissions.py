@@ -8,6 +8,7 @@ GET  /api/download/{id} — Download submitted file.
 """
 
 import os
+import re
 import uuid
 import secrets
 from datetime import datetime
@@ -28,6 +29,30 @@ settings = get_settings()
 router = APIRouter(prefix="/api", tags=["Submissions"])
 
 
+def _sanitize_filename(filename: str) -> str:
+    base = os.path.basename(filename or "").strip()
+    if not base:
+        return ""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", base)
+    return safe.strip("._")
+
+
+def _normalize(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+def _teacher_is_assigned_to_submission(current_user: User, submission: Submission, db: Session) -> bool:
+    student = db.query(User).filter(User.id == submission.student_id).first()
+    if not student:
+        return False
+    target_section = _normalize(student.section)
+    target_subject = _normalize(submission.subject)
+    for mapping in (current_user.subjects_sections or []):
+        if _normalize(mapping.get("section")) == target_section and _normalize(mapping.get("subject")) == target_subject:
+            return True
+    return False
+
+
 @router.post("/submit", response_model=SubmitResponse, status_code=status.HTTP_202_ACCEPTED)
 def submit_assignment(
     subject: str = Form(...),
@@ -42,7 +67,13 @@ def submit_assignment(
 
     # ── Validate file type (first-class JPG, PNG, DOCX, PDF, TXT) ──
     allowed_extensions = {".pdf", ".docx", ".doc", ".txt", ".png", ".jpg", ".jpeg"}
-    ext = os.path.splitext(file.filename)[1].lower()
+    safe_original_name = _sanitize_filename(file.filename)
+    if not safe_original_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file name.",
+        )
+    ext = os.path.splitext(safe_original_name)[1].lower()
     if ext not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -54,7 +85,7 @@ def submit_assignment(
     os.makedirs(upload_dir, exist_ok=True)
 
     # Generate unique filename to prevent collisions
-    unique_name = f"{uuid.uuid4().hex}_{file.filename}"
+    unique_name = f"{uuid.uuid4().hex}_{safe_original_name}"
     filepath = os.path.join(upload_dir, unique_name)
 
     try:
@@ -75,7 +106,7 @@ def submit_assignment(
         student_id=current_user.id,
         subject=subject.strip(),
         assignment_title=clean_title,
-        filename=file.filename,
+        filename=safe_original_name,
         filepath=filepath,
         status=SubmissionStatus.pending,
         is_locked=False,
@@ -84,20 +115,14 @@ def submit_assignment(
     db.commit()
     db.refresh(submission)
 
-    # ── Process asynchronously (Redis + Celery) or fallback ───
+    # ── Process in eager mode or asynchronously via Celery ─────
     from tasks.process_submission import process_submission_task, process_submission_sync
     celery_task_id = "sync_mode"
-    try:
-        task = process_submission_task.delay(submission.id)
-        logger.info(f"Submission #{submission.id} queued as task {task.id}.")
-        celery_task_id = task.id
+
+    if settings.CELERY_TASK_ALWAYS_EAGER:
         submission.celery_task_id = celery_task_id
         db.commit()
-    except Exception as e:
-        logger.warning(f"Async Celery queue unavailable ({e}). Running synchronously...")
         try:
-            submission.celery_task_id = "sync_mode"
-            db.commit()
             process_submission_sync(submission.id)
         except Exception as sync_err:
             logger.error(f"Synchronous processing failed: {sync_err}")
@@ -107,6 +132,27 @@ def submit_assignment(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Analysis failed: {str(sync_err)}"
             )
+    else:
+        try:
+            task = process_submission_task.delay(submission.id)
+            logger.info(f"Submission #{submission.id} queued as task {task.id}.")
+            celery_task_id = task.id
+            submission.celery_task_id = celery_task_id
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Async Celery queue unavailable ({e}). Running synchronously...")
+            try:
+                submission.celery_task_id = "sync_mode"
+                db.commit()
+                process_submission_sync(submission.id)
+            except Exception as sync_err:
+                logger.error(f"Synchronous processing failed: {sync_err}")
+                submission.status = SubmissionStatus.failed
+                db.commit()
+                raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Analysis failed: {str(sync_err)}"
+                )
 
     return SubmitResponse(
         message="Assignment uploaded and queued for forensic OCR & Plagiarism analysis.",
@@ -176,6 +222,11 @@ def lock_submission(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to lock this submission"
+        )
+    if current_user.role.value == "teacher" and not _teacher_is_assigned_to_submission(current_user, submission, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teacher is not assigned to this submission's section/subject."
         )
 
     if submission.status == SubmissionStatus.failed:
@@ -279,6 +330,11 @@ def download_submission(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to download this file"
+        )
+    if current_user.role.value == "teacher" and not _teacher_is_assigned_to_submission(current_user, submission, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teacher is not assigned to this submission's section/subject."
         )
         
     if not os.path.exists(submission.filepath):
