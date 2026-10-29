@@ -204,6 +204,20 @@ class ModelManager:
         return got_cfg.get("enabled", True)
 
     # ── Qwen2-VL Loader ──────────────────────────────────────────────────────
+    def _resolve_hf_snapshot(self, repo_id: str) -> str:
+        """Resolve locally cached snapshot directory to prevent online network requests."""
+        parts = repo_id.replace("/", "--")
+        cache_dir = os.path.expanduser(f"~/.cache/huggingface/hub/models--{parts}/snapshots")
+        if os.path.isdir(cache_dir):
+            snapshots = [
+                os.path.join(cache_dir, d)
+                for d in os.listdir(cache_dir)
+                if os.path.isdir(os.path.join(cache_dir, d))
+            ]
+            if snapshots:
+                return sorted(snapshots, key=os.path.getmtime, reverse=True)[0]
+        return repo_id
+
     def get_qwen2_vl(self) -> Tuple[Any, Any]:
         """Lazy-loads and returns (processor, model) for Qwen2-VL (4-bit quantized)."""
         if self._qwen_model is not None and self._qwen_processor is not None:
@@ -220,10 +234,17 @@ class ModelManager:
             model_id = qwen_cfg.get("model_id", "Qwen/Qwen2-VL-2B-Instruct")
             load_in_4bit = qwen_cfg.get("load_in_4bit", True)
 
-            logger.info(f"[Qwen2-VL] Lazy-loading {model_id} (4-bit: {load_in_4bit}) on {self._device}...")
+            target_path = self._resolve_hf_snapshot(model_id)
+            is_local = os.path.isdir(target_path)
+            logger.info(f"[Qwen2-VL] Lazy-loading {target_path} (4-bit: {load_in_4bit}, local: {is_local}) on {self._device}...")
 
             try:
-                self._qwen_processor = AutoProcessor.from_pretrained(model_id)
+                self._qwen_processor = AutoProcessor.from_pretrained(
+                    target_path,
+                    min_pixels=256 * 28 * 28,
+                    max_pixels=1024 * 28 * 28,
+                    local_files_only=is_local
+                )
 
                 if load_in_4bit and self._device == "cuda":
                     bnb_config = BitsAndBytesConfig(
@@ -233,16 +254,18 @@ class ModelManager:
                         bnb_4bit_use_double_quant=True
                     )
                     self._qwen_model = Qwen2VLForConditionalGeneration.from_pretrained(
-                        model_id,
+                        target_path,
                         quantization_config=bnb_config,
                         device_map="auto",
-                        torch_dtype=torch.float16
+                        torch_dtype=torch.float16,
+                        local_files_only=is_local
                     )
                 else:
                     self._qwen_model = Qwen2VLForConditionalGeneration.from_pretrained(
-                        model_id,
+                        target_path,
                         device_map="auto" if self._device == "cuda" else None,
-                        torch_dtype=torch.float16 if self._device == "cuda" else torch.float32
+                        torch_dtype=torch.float16 if self._device == "cuda" else torch.float32,
+                        local_files_only=is_local
                     )
                     if self._device != "cuda":
                         self._qwen_model.to(self._device)

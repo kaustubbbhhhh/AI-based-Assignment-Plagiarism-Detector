@@ -106,7 +106,8 @@ class Qwen2VLRecognizer(BaseRecognizer):
                 with torch.no_grad():
                     generated_ids = model.generate(
                         **inputs,
-                        max_new_tokens=self.max_new_tokens
+                        max_new_tokens=self.max_new_tokens,
+                        do_sample=False
                     )
 
                 trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
@@ -232,3 +233,68 @@ class Qwen2VLRecognizer(BaseRecognizer):
         except Exception as e:
             logger.error(f"[Qwen2-VL] Error transcribing column: {e}")
             return []
+
+    def transcribe_page(
+        self,
+        page_image: np.ndarray,
+        prompt: Optional[str] = None,
+        max_tokens: int = 1024
+    ) -> str:
+        """
+        Transcribe an entire assignment document page using Qwen2-VL end-to-end.
+        Preserves handwritten structure, questions, answers, math formulas, and tables.
+        """
+        import torch
+        from qwen_vl_utils import process_vision_info
+
+        processor, model = self.model_manager.get_qwen2_vl()
+        if processor is None or model is None:
+            return ""
+
+        pil_img = self._to_pil(page_image)
+        default_prompt = (
+            "Transcribe all handwritten and printed text in this document accurately. "
+            "Preserve all formatting, equations, and tables. "
+            "Output only the transcribed text without conversational commentary or markdown quotes."
+        )
+        p = prompt or default_prompt
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": pil_img},
+                    {"type": "text", "text": p}
+                ]
+            }
+        ]
+
+        try:
+            chat_text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs = process_vision_info(messages)
+            inputs = processor(
+                text=[chat_text],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt"
+            ).to(model.device)
+
+            with torch.no_grad():
+                generated_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=False
+                )
+
+            trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
+            pred_text = processor.batch_decode(
+                trimmed,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False
+            )[0].strip()
+
+            return pred_text
+        except Exception as e:
+            logger.error(f"[Qwen2-VL] Error transcribing full page: {e}")
+            return ""

@@ -64,6 +64,7 @@ class OCRPipeline:
         self.escalate_to_qwen = self.config.get("routing", {}).get("escalate_to_qwen", True)
         self.escalate_to_got = self.config.get("routing", {}).get("escalate_to_got", True)
         self.add_margin = self.config.get("models", {}).get("craft", {}).get("add_margin", 0.10)
+        self.primary_recognizer = self.config.get("models", {}).get("primary_recognizer", "qwen2_vl")
 
     def process(
         self,
@@ -193,38 +194,53 @@ class OCRPipeline:
             qwen_res: Optional[ModelOutput] = None
 
             if cat == RoutingCategory.NORMAL:
-                # 1. TrOCR is the primary line recognition model
-                trocr_res = self.trocr_recognizer.recognize(crop)
-                trocr_processed += 1
+                if self.primary_recognizer == "qwen2_vl" and self.qwen_recognizer.enabled:
+                    qwen_res = self.qwen_recognizer.recognize(crop)
+                    qwen_processed += 1
+                else:
+                    # 1. TrOCR is the primary line recognition model
+                    if self.trocr_recognizer.enabled:
+                        trocr_res = self.trocr_recognizer.recognize(crop)
+                        trocr_processed += 1
 
-                # 2. Check for Confidence Escalation
-                if trocr_res.confidence < self.conf_threshold:
-                    if self.escalate_to_qwen and self.qwen_recognizer.enabled:
-                        logger.info(
-                            f"[ESCALATION] Region {reg_dict['id']}: TrOCR conf ({trocr_res.confidence:.2f}) "
-                            f"< threshold ({self.conf_threshold:.2f}). Escalating to Qwen2-VL."
-                        )
-                        qwen_res = self.qwen_recognizer.recognize(crop)
-                        qwen_processed += 1
-                    elif self.escalate_to_got:
-                        logger.info(
-                            f"[ESCALATION] Region {reg_dict['id']}: TrOCR conf ({trocr_res.confidence:.2f}) "
-                            f"< threshold ({self.conf_threshold:.2f}). Escalating to GOT-OCR 2.0."
-                        )
-                        got_res = self.got_recognizer.recognize(crop, ocr_type="ocr", content_type=c_type)
-                        got_processed += 1
+                    # 2. Check for Confidence Escalation
+                    if trocr_res is None or trocr_res.confidence < self.conf_threshold:
+                        if self.escalate_to_qwen and self.qwen_recognizer.enabled:
+                            logger.info(
+                                f"[ESCALATION] Region {reg_dict['id']}: TrOCR conf ({trocr_res.confidence if trocr_res else 0.0:.2f}) "
+                                f"< threshold ({self.conf_threshold:.2f}). Escalating to Qwen2-VL."
+                            )
+                            qwen_res = self.qwen_recognizer.recognize(crop)
+                            qwen_processed += 1
+                        elif self.escalate_to_got and self.got_recognizer.enabled:
+                            logger.info(
+                                f"[ESCALATION] Region {reg_dict['id']}: TrOCR conf ({trocr_res.confidence if trocr_res else 0.0:.2f}) "
+                                f"< threshold ({self.conf_threshold:.2f}). Escalating to GOT-OCR 2.0."
+                            )
+                            got_res = self.got_recognizer.recognize(crop, ocr_type="ocr", content_type=c_type)
+                            got_processed += 1
 
             elif cat == RoutingCategory.COMPLEX:
-                # Direct route to GOT-OCR
-                got_res = self.got_recognizer.recognize(crop, ocr_type="format", content_type=c_type)
-                got_processed += 1
+                # Direct route to GOT-OCR or Qwen2-VL
+                if self.got_recognizer.enabled:
+                    got_res = self.got_recognizer.recognize(crop, ocr_type="format", content_type=c_type)
+                    got_processed += 1
+                elif self.qwen_recognizer.enabled:
+                    qwen_res = self.qwen_recognizer.recognize(crop)
+                    qwen_processed += 1
 
             elif cat == RoutingCategory.UNCERTAIN:
-                # Both models are invoked to allow fusion arbitration
-                trocr_res = self.trocr_recognizer.recognize(crop)
-                got_res = self.got_recognizer.recognize(crop, ocr_type="format" if c_type != ContentType.TEXT else "ocr", content_type=c_type)
-                trocr_processed += 1
-                got_processed += 1
+                # Invoke primary and escalation models to allow fusion arbitration
+                if self.primary_recognizer == "qwen2_vl" and self.qwen_recognizer.enabled:
+                    qwen_res = self.qwen_recognizer.recognize(crop)
+                    qwen_processed += 1
+                elif self.trocr_recognizer.enabled:
+                    trocr_res = self.trocr_recognizer.recognize(crop)
+                    trocr_processed += 1
+
+                if self.got_recognizer.enabled:
+                    got_res = self.got_recognizer.recognize(crop, ocr_type="format" if c_type != ContentType.TEXT else "ocr", content_type=c_type)
+                    got_processed += 1
 
             # Stage 5b: Result Fusion
             fused_reg = self.fusion.fuse_region(

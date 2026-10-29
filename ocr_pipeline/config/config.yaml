@@ -1,6 +1,8 @@
 # OCR Pipeline Master Configuration
 
 models:
+  primary_recognizer: "qwen2_vl"   # "qwen2_vl" as primary assignment OCR model
+
   craft:
     enabled: true
     device: "auto"              # "auto", "cuda", or "cpu"
@@ -15,7 +17,7 @@ models:
     add_margin: 0.15            # Add 15% margin to cropped bounding boxes
 
   trocr:
-    enabled: true
+    enabled: false              # Disabled: Using Qwen2-VL instead
     model_path: "microsoft/trocr-base-handwritten"
     fallback_model: "microsoft/trocr-base-handwritten"
     device: "auto"              # "auto", "cuda", or "cpu"

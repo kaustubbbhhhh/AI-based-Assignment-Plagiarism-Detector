@@ -1,7 +1,7 @@
 """
 Run the full detection pipeline on Scan document20260813_183154.pdf.
 Stages:
-  1. OCR & Text Extraction (PyMuPDF + Local OCR / EasyOCR + TrOCR)
+  1. OCR & Text Extraction (PyMuPDF + Qwen2-VL Vision OCR)
   2. Subject & Curriculum Relevance Validation
   3. Two-Layer AI Detection Engine (Qwen 2.5 + Stylometrics + Random Forest)
   4. Peer Plagiarism Detection (TF-IDF Cosine Similarity)
