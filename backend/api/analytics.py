@@ -22,11 +22,12 @@ router = APIRouter(prefix="/api/analytics", tags=["Forensic Analytics"])
 
 
 def check_authorized(current_user: User):
-    """Ensure only HOD and Teacher accounts can view advanced analytics."""
-    if current_user.role.value not in ("hod", "teacher"):
+    """Ensure only HOD, Teacher, and Admin accounts can view advanced analytics."""
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if role_val not in ("hod", "teacher", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only HODs and Teachers are authorized to view forensic analytics.",
+            detail="Access denied. Only HODs, Teachers, and Administrators are authorized to view forensic analytics.",
         )
 
 

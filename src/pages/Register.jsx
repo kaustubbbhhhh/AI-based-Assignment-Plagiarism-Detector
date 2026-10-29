@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, BookOpen, GraduationCap, ArrowRight, Plus, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { api } from '../utils/api';
 
 // ── Branch → Subjects mapping ────────────────────────────────
 const BRANCH_SUBJECTS = {
@@ -34,6 +35,7 @@ export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
 
   // ── Student fields ────────────────────────────────────────
@@ -74,7 +76,19 @@ export default function Register() {
     setError('');
     setLoading(true);
 
-    const payload = { name, email, password, role, phone };
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long and contain both letters and numbers.');
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please verify your password.');
+      setLoading(false);
+      return;
+    }
+
+    const payload = { name, email, password, confirm_password: confirmPassword, role, phone };
 
     if (role === 'student') {
       payload.enrollment_no = enrollmentNo;
@@ -94,12 +108,7 @@ export default function Register() {
     }
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-      const response = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const response = await api.post('/api/auth/register', payload);
 
       if (!response.ok) {
         const data = await response.json();
@@ -108,11 +117,7 @@ export default function Register() {
 
       setSuccess(true);
     } catch (err) {
-      if (err.name === 'TypeError' || err.message?.toLowerCase().includes('fetch')) {
-        setError('Unable to connect to backend server. Please verify backend is running.');
-      } else {
-        setError(err.message);
-      }
+      setError(err.message || 'Registration failed.');
     } finally {
       setLoading(false);
     }
@@ -238,27 +243,39 @@ export default function Register() {
             </div>
           </div>
 
+          <div className="form-group">
+            <label className="form-label">Email Address *</label>
+            <input
+              type="email"
+              className="form-input"
+              placeholder="name@institute.edu"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="form-group">
-              <label className="form-label">Email Address *</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="name@institute.edu"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Password *</label>
+              <label className="form-label">Password * (Min 8 characters)</label>
               <input
                 type="password"
                 className="form-input"
-                placeholder="Min 6 characters"
+                placeholder="Min 8 chars, letters & digits"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Confirm Password *</label>
+              <input
+                type="password"
+                className="form-input"
+                placeholder="Re-enter password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
               />
             </div>
           </div>

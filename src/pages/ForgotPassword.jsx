@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle, KeyRound } from 'lucide-react';
+import { api } from '../utils/api';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+  const [email, setEmail] = useState(location.state?.email || '');
   const [statusMsg, setStatusMsg] = useState('');
   const [resetLink, setResetLink] = useState('');
   const [error, setError] = useState('');
@@ -18,13 +20,7 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-      const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-
+      const response = await api.post('/api/auth/forgot-password', { email });
       const data = await response.json();
 
       if (!response.ok) {
@@ -36,11 +32,7 @@ export default function ForgotPassword() {
         setResetLink(data.reset_link);
       }
     } catch (err) {
-      if (err.name === 'TypeError' || err.message?.toLowerCase().includes('fetch')) {
-        setError('Unable to connect to backend server. Please verify backend is running.');
-      } else {
-        setError(err.message || 'An error occurred. Please try again.');
-      }
+      setError(err.message || 'An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -156,13 +148,31 @@ export default function ForgotPassword() {
         </form>
 
         <div className="text-center" style={{ marginTop: '1.75rem' }}>
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-2"
-            style={{ color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}
-          >
-            <ArrowLeft size={16} /> Back to Login
-          </Link>
+          {location.state?.fromPortal ? (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-2"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                fontSize: '0.875rem',
+                fontWeight: 600
+              }}
+            >
+              <ArrowLeft size={16} /> Back to My Portal
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2"
+              style={{ color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}
+            >
+              <ArrowLeft size={16} /> Back to Login
+            </Link>
+          )}
         </div>
       </div>
     </div>

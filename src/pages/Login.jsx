@@ -1,21 +1,34 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, BookOpen, GraduationCap, ArrowRight, AlertCircle, Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [role, setRole] = useState('student');
-  const [email, setEmail] = useState('student@demo.edu');
-  const [password, setPassword] = useState('pass123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleRoleChange = (selectedRole) => {
     setRole(selectedRole);
-    if (selectedRole === 'student') setEmail('student@demo.edu');
-    else if (selectedRole === 'teacher') setEmail('teacher@demo.edu');
-    else if (selectedRole === 'hod') setEmail('hod@demo.edu');
+  };
+
+  const fillDemoCredentials = (demoRole) => {
+    setRole(demoRole);
+    if (demoRole === 'student') {
+      setEmail('student@demo.edu');
+      setPassword('Password123');
+    } else if (demoRole === 'teacher') {
+      setEmail('teacher@demo.edu');
+      setPassword('Password123');
+    } else if (demoRole === 'hod') {
+      setEmail('hod@demo.edu');
+      setPassword('Password123');
+    }
   };
 
   const handleLogin = async (e) => {
@@ -24,39 +37,19 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      const loggedUser = await login(email, password);
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Login failed');
-      }
-
-      const data = await response.json();
-
-      // Store token and user info
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      // Enforce role matching
-      const userRole = data.user.role;
-      if (userRole !== role) {
-        throw new Error(`Unauthorized role access for this account.`);
+      // Verify selected role matches account role
+      const userRole = (loggedUser.role || '').toLowerCase();
+      if (userRole !== role.toLowerCase()) {
+        throw new Error(`Your account role is '${userRole}', but '${role}' portal was selected.`);
       }
 
       if (userRole === 'student') navigate('/student');
       else if (userRole === 'teacher') navigate('/teacher');
       else if (userRole === 'hod') navigate('/hod');
     } catch (err) {
-      if (err.name === 'TypeError' || err.message?.toLowerCase().includes('fetch')) {
-        setError('Unable to connect to backend server. Please verify backend is running.');
-      } else {
-        setError(err.message);
-      }
+      setError(err.message || 'Login failed.');
     } finally {
       setLoading(false);
     }
@@ -197,12 +190,37 @@ export default function Login() {
             )}
           </button>
 
-          <p className="text-center text-muted" style={{ marginTop: '1.5rem', fontSize: '0.875rem' }}>
-            Don't have an account?{' '}
-            <Link to="/register" style={{ color: 'var(--primary-color)', fontWeight: 600 }}>
-              Register here
-            </Link>
-          </p>
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px dashed var(--border-color)', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Quick Fill Demo Accounts
+            </span>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                onClick={() => fillDemoCredentials('student')}
+              >
+                Student Demo
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                onClick={() => fillDemoCredentials('teacher')}
+              >
+                Teacher Demo
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                onClick={() => fillDemoCredentials('hod')}
+              >
+                HOD Demo
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </div>

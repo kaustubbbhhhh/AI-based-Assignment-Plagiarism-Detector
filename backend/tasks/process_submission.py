@@ -53,7 +53,7 @@ def _run_pipeline(submission_id: int, update_progress=None):
                 "progress": "Payload Ingested: Verifying file format and digital streams...",
                 "stage": "ingest",
                 "current_step": 1,
-                "total_steps": 7
+                "total_steps": 6
             })
 
         # ── 2. Extract text & OCR ─────────────────────────────
@@ -62,7 +62,7 @@ def _run_pipeline(submission_id: int, update_progress=None):
                 "progress": "Running OCR Vision & text extraction...",
                 "stage": "ocr_extraction",
                 "current_step": 2,
-                "total_steps": 7
+                "total_steps": 6
             })
             
         extraction_result = extract_text(submission.filepath)
@@ -81,7 +81,7 @@ def _run_pipeline(submission_id: int, update_progress=None):
                 "progress": f"OCR Quality Gate: Calculated score {ocr_score:.1f}% ({ocr_status})...",
                 "stage": "ocr_quality",
                 "current_step": 3,
-                "total_steps": 7
+                "total_steps": 6
             })
 
         cleaned_text = raw_text.strip()
@@ -89,40 +89,30 @@ def _run_pipeline(submission_id: int, update_progress=None):
         word_count = len(words)
         sentence_count = len([s for s in cleaned_text.split('.') if s.strip()])
 
-        # ── 4. Semantic Subject Validation ────────────────────
-        if update_progress:
-            update_progress("PROGRESS", {
-                "progress": f"Validating subject curriculum relevance for '{submission.subject}'...",
-                "stage": "subject_validation",
-                "current_step": 4,
-                "total_steps": 7
-            })
-        from services.subject_validation import validate_subject_relevance
-        validation = validate_subject_relevance(cleaned_text, submission.subject)
-        
-        if not validation["is_valid"]:
-            logger.warning(f"Submission #{submission_id} rejected: {validation['reason']}")
-            raise ValueError(validation["reason"])
+        # NOTE: Subject Validation (was Step 4) has been moved to Future Scope.
+        # Will be re-added with a dynamic, database-driven keyword system
+        # (syllabus upload → auto-extract keywords → DB storage) instead of
+        # the previous hardcoded keyword approach. See services/subject_validation.py.
 
-        # ── 5. AI Detection ───────────────────────────────────
+        # ── 4. AI Detection ───────────────────────────────────
         if update_progress:
             update_progress("PROGRESS", {
                 "progress": "Running deep-learning AI content detection (Perplexity & Burstiness)...",
                 "stage": "ai_detection",
-                "current_step": 5,
-                "total_steps": 7
+                "current_step": 4,
+                "total_steps": 6
             })
         ai_result = analyze_ai_content(cleaned_text)
         ai_score = ai_result["ai_score"]
         ai_label = ai_result["label"]
 
-        # ── 6. Plagiarism Detection ───────────────────────────
+        # ── 5. Plagiarism Detection ───────────────────────────
         if update_progress:
             update_progress("PROGRESS", {
                 "progress": "Comparing against section peer submissions & visual hash corpus...",
                 "stage": "plagiarism",
-                "current_step": 6,
-                "total_steps": 7
+                "current_step": 5,
+                "total_steps": 6
             })
 
         # Build corpus from other completed peer submissions (same subject, different student)
@@ -153,7 +143,7 @@ def _run_pipeline(submission_id: int, update_progress=None):
             plag_result = check_plagiarism(cleaned_text, corpus)
             plagiarism_score = plag_result["plagiarism_score"]
 
-        # ── 7. Map label string to enum ───────────────────────
+        # ── 6. Map label string to enum ───────────────────────
         label_map = {
             "Original": ContentLabel.original,
             "AI-generated": ContentLabel.ai_generated,
@@ -161,13 +151,13 @@ def _run_pipeline(submission_id: int, update_progress=None):
         }
         content_label = label_map.get(ai_label, ContentLabel.original)
 
-        # ── 8. Save Report ────────────────────────────────────
+        # ── 7. Save Report ────────────────────────────────────
         if update_progress:
             update_progress("PROGRESS", {
                 "progress": "Document verified! Ready for student review and final lock...",
                 "stage": "completed",
-                "current_step": 7,
-                "total_steps": 7
+                "current_step": 6,
+                "total_steps": 6
             })
 
         # Delete any pre-existing report for this submission (e.g. if re-processed)

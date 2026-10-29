@@ -1,26 +1,25 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, LogOut, User } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
   
-  const authRoutes = ['/login', '/', '/register', '/forgot-password', '/reset-password'];
+  const authRoutes = ['/login', '/', '/forgot-password', '/reset-password', '/admin/login', '/change-password-required'];
   const isAuthPage = authRoutes.includes(location.pathname);
+  const showUserNav = isAuthenticated && user && user.name && !isAuthPage;
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const token = localStorage.getItem('token');
-  const isLoggedIn = token && user && user.name && !isAuthPage;
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
   const getRoleBadgeClass = (role) => {
     const r = (role || '').toLowerCase();
+    if (r === 'admin') return 'badge-danger';
     if (r === 'hod') return 'badge-danger';
     if (r === 'teacher') return 'badge-primary';
     if (r === 'student') return 'badge-accent';
@@ -50,7 +49,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {isLoggedIn && (
+        {showUserNav && (
           <div className="navbar-actions">
             <div className="navbar-user-chip hidden-mob">
               <User size={15} style={{ color: 'var(--text-muted)' }} />
@@ -77,4 +76,3 @@ export default function Navbar() {
     </nav>
   );
 }
-

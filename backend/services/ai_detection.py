@@ -5,7 +5,7 @@ Uses the trained v2 Random Forest classifier (18 features) when available,
 with fallback to the legacy two-layer fusion (60/40 weighted) when not.
 
 The v2 model was trained on 2,739 labeled essays with features spanning:
-  - Statistical: perplexity, burstiness, entropy (DistilGPT-2)
+  - Statistical: perplexity, burstiness, entropy (Qwen 2.5 0.5B)
   - Stylometric: sentence lengths, TTR, contractions, POS ratios, NER density
   - Readability: Flesch Reading Ease
   - Semantic: generic phrasing, personal voice, over-structured coherence

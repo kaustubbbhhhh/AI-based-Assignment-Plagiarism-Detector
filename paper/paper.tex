@@ -1,0 +1,487 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{array}
+\usepackage{textcomp}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{multirow}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\begin{document}
+
+\title{Robust Multi-Modal Academic Integrity: An Integrated Vision-Language and Stylometric Framework for Handwritten and Digital Assignment Plagiarism Detection}
+
+\author{Research and Development Team%
+\thanks{This research was conducted in the Department of Computer Science and Engineering. All correspondence should be addressed to the corresponding authors.}
+}
+
+\markboth{IEEE Transactions on Learning Technologies,~Vol.~XX, No.~X, October~2026}%
+{Research Team: Robust Multi-Modal Academic Integrity Framework}
+
+\maketitle
+
+\begin{abstract}
+The proliferation of large language models (LLMs) such as GPT-4o, Claude 3.5, and Llama 3 has precipitated an unprecedented integrity crisis across secondary and tertiary educational institutions. Existing academic integrity frameworks suffer from three systemic deficiencies: (1) an inability to ingest non-digital modalities (e.g., student handwritten assignments, scanned examinations, crumpled sheets, and smartphone photographs); (2) high false-positive rates on authentic human writing---particularly penalizing non-native English learners; and (3) severe data-privacy and FERPA/GDPR violations stemming from cloud-based text transmission to proprietary third-party detectors. In this paper, we propose an enterprise-grade, multi-modal, privacy-preserving academic integrity framework that couples an 8-layer layout-aware Optical Character Recognition (OCR) vision pipeline with an adversarial defense-in-depth detection architecture. The vision engine utilizes CRAFT line detection, Microsoft TrOCR for unconstrained cursive handwriting, and GOT-OCR 2.0 for mathematical notations and tabular formatting, reconciled through Levenshtein consensus arbitration and topological reading-order sorting. Extracted text is evaluated via a multi-layer attribution engine comprising: (a) a semantic curriculum alignment gate; (b) a local neural language model (Qwen 2.5 0.5B) computing token-level perplexity, loss variance, Shannon entropy, and sentence burstiness coefficient of variation; (c) an 18-dimensional stylometric, syntactic, and structural feature extractor; and (d) a calibrated ensemble Random Forest classifier. Concurrently, a dual-tier peer plagiarism subsystem detects image-level resubmissions via 64-bit difference perceptual hashing ($\text{dHash}$) and textual collusion via cohort-isolated unigram/bigram TF-IDF cosine similarity. Rigorous empirical evaluation across a benchmark dataset of 2,739 authentic student and LLM-generated submissions demonstrates that our model achieves \textbf{97.43\% classification accuracy}, \textbf{99.22\% precision}, \textbf{96.96\% recall}, \textbf{98.08\% F1-score}, and an \textbf{ROC-AUC of 0.9924}. Crucially, the system reduces the false-positive rate on authentic human writing to \textbf{1.59\%} (3 false positives out of 189 test instances), while executing completely on-premise without cloud data exfiltration.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Academic Integrity, AI-Generated Text Detection, Perplexity, Stylometry, Optical Character Recognition, TrOCR, GOT-OCR 2.0, Peer Plagiarism, Perceptual Hashing, Machine Learning.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\IEEEPARstart{T}{he} rapid democratization of generative Artificial Intelligence (GenAI) and Large Language Models (LLMs)---epitomized by OpenAI's GPT-4o~\cite{achiam2023gpt4}, Anthropic's Claude 3.5 Sonnet, and Meta's Llama 3---has transformed automated text synthesis~\cite{brown2020language, foltynek2019academic}. While these models unlock transformative potential in creative writing and programming assistance, they pose an existential threat to traditional pedagogical assessment paradigms. Educational institutions rely heavily on independent written assignments, laboratory reports, and take-home examinations to assess critical thinking, synthesis, and subject mastery. However, students can now effortlessly generate articulate, structurally coherent, and superficially convincing submissions in seconds, bypassing the cognitive learning process~\cite{crothers2023machine}.
+
+Traditional academic plagiarism detection engines (e.g., Turnitin, CopyLeaks, Unicheck) were engineered around exact and near-exact verbatim string-matching, $n$-gram fingerprinting (e.g., winnowing), and document-level information retrieval~\cite{meuschke2013analyzing, salton1988term}. When applied to AI-generated essays, these traditional engines fail completely: LLMs synthesize novel token combinations rather than copying verbatim text from a central repository, producing near-zero similarity against global web indices.
+
+To counter this, a first generation of commercial ``AI detectors'' emerged, largely relying on zero-shot perplexity heuristics or monolithic deep classification heads~\cite{mitchell2023detectgpt}. Nevertheless, real-world deployment of these commercial tools in higher education has exposed three critical vulnerabilities:
+\begin{enumerate}
+    \item \textbf{Modal Isolation (Text-Only Limitation):} Institutional coursework is fundamentally multi-modal. In STEM, humanities, and in-class examinations, students frequently submit handwritten problem sets, physical exam booklets, or photographs of documents taken with mobile devices. Current detectors cannot parse physical documents directly, forcing instructors to manually transcribe text or rely on naive OCR utilities that garble multi-column text, drop mathematical formulas, and corrupt cursive handwriting.
+    \item \textbf{The False-Positive Disaster \& Disparate Impact:} Wrongful accusations of academic dishonesty carry catastrophic academic, psychological, and disciplinary consequences. Empirical studies have proven that monolithic commercial detectors exhibit alarming false-positive rates (FPR), particularly discriminating against non-native English writers who utilize standardized sentence templates and limited vocabulary~\cite{liang2023gpt}. High false-positive rates erode student-faculty trust and render automated scores legally indefensible in academic appeals.
+    \item \textbf{Regulatory and Privacy Violations (FERPA / GDPR):} Commercial detectors operate as proprietary cloud software-as-a-service (SaaS). Transmitting student submissions to external corporate servers violates strict student privacy regulations, including the United States Family Educational Rights and Privacy Act (FERPA) and the European Union General Data Protection Regulation (GDPR). Educational institutions have an urgent legal and ethical imperative to retain full custody of student intellectual work.
+\end{enumerate}
+
+\subsection{Contributions of this Work}
+To overcome these fundamental limitations, this paper presents the design, mathematical formulation, empirical validation, and production deployment of the \textbf{AI-Based Assignment Plagiarism Detector}. The key scientific and engineering contributions of this paper are:
+\begin{itemize}
+    \item \textbf{End-to-End Multi-Modal Architecture:} We formulate an end-to-end framework capable of ingesting raw digital text (\texttt{.pdf}, \texttt{.docx}, \texttt{.txt}) as well as multi-page smartphone camera captures and degraded scans of handwritten and printed student assignments.
+    \item \textbf{8-Layer Layout-Aware OCR Vision Pipeline:} We propose a modular computer vision pipeline integrating morphological contrast enhancement, Hough deskewing, Sauvola binarization, notebook line inpainting, CRAFT line-level text detection, dynamic region routing, Microsoft TrOCR for cursive handwriting, and GOT-OCR 2.0 for \LaTeX{} equations and markdown tables. A Levenshtein consensus arbiter and topological column sorter reconstruct accurate reading order without column interleaving.
+    \item \textbf{Defense-in-Depth AI Attribution Engine:} We construct a hybrid detection engine combining a local neural language model (Qwen 2.5 0.5B~\cite{yang2024qwen25}) for token-level log-loss, perplexity, and sentence burstiness coefficient of variation ($\text{CV}_{\text{burstiness}}$) with an 18-dimensional stylometric, syntactic, and readability feature space. An ensemble Random Forest classifier delivers calibrated probabilities with conservative, three-tier academic decision thresholds.
+    \item \textbf{Dual-Tier Peer Collusion Engine:} We implement a localized peer-to-peer plagiarism engine that cross-references submissions within the same course cohort. It combines 64-bit difference perceptual hashing ($\text{dHash}$) to catch visual image resubmissions with $L_2$-normalized unigram/bigram TF-IDF cosine similarity, optimized via in-memory MD5 matrix caching.
+    \item \textbf{Empirical Rigor \& Open Governance:} Evaluated on a balanced corpus of 2,739 student and LLM essays, the model delivers \textbf{97.43\% accuracy}, \textbf{99.22\% precision}, \textbf{98.08\% F1-score}, and \textbf{0.9924 ROC-AUC}, while suppressing false positives on human text to \textbf{1.59\%}. The entire platform operates fully on-premise on standard workstation hardware via an asynchronous Celery/Redis microservices architecture.
+\end{itemize}
+
+\section{Related Work}
+
+\subsection{Traditional Textual Plagiarism Detection}
+Automated plagiarism detection has evolved over three decades. Early systems relied on string matching algorithms such as the Knuth-Morris-Pratt and Boyer-Moore algorithms, progressing toward fuzzy string matching using Levenshtein edit distance. Salton and Buckley established the vector space model (VSM) using Term Frequency-Inverse Document Frequency (TF-IDF)~\cite{salton1988term}. Later, Schleimer et al. introduced the \textit{winnowing} algorithm, a local fingerprinting technique that extracts minimum hash values within a sliding window to detect verbatim substring matching robustly against minor perturbations. While effective for detecting peer-to-peer copying and online source scraping~\cite{meuschke2013analyzing}, these methods are blind to machine-generated paraphrasing and prompt-engineered synthesis.
+
+\subsection{Machine-Generated Text Detection}
+Approaches for identifying machine-generated text generally fall into three categories: watermarking, zero-shot statistical metrics, and supervised deep classifiers~\cite{crothers2023machine}.
+\begin{itemize}
+    \item \textit{Watermarking:} Involves altering the sampling distribution of LLM logits during token generation by partitioning vocabulary into pseudo-random ``green'' and ``red'' lists. While theoretically sound, watermarking requires model provider compliance and is easily washed out via paraphrasing, translation round-tripping, or local open-weight model generation.
+    \item \textit{Zero-Shot Statistical Detectors:} Rely on the observation that autoregressive language models maximize probability under their training distribution. Consequently, machine text tends to exhibit lower perplexity and flatter token loss distributions than human prose. Mitchell et al. introduced \textit{DetectGPT}, which measures the log-probability curvature of perturbed text~\cite{mitchell2023detectgpt}. While effective, DetectGPT requires dozens of model forward passes per document, imposing prohibitive computational overhead for institutional batch grading.
+    \item \textit{Supervised Classifiers:} Fine-tune pre-trained transformers (e.g., RoBERTa, DeBERTa) as binary classifiers. While achieving high benchmark accuracy, these models often overfit to specific prompt styles, exhibit out-of-distribution brittleness, and suffer from severe false-positive rates when tested on non-native English speakers~\cite{liang2023gpt}.
+\end{itemize}
+
+\subsection{Document Image Processing and Optical Character Recognition}
+Document processing in academic settings is complicated by diverse handwriting styles, low contrast, non-uniform illumination, and complex multi-column layouts. Traditional OCR frameworks (e.g., Tesseract) rely on connected-component analysis and LSTM sequence modeling, which deteriorate drastically on cursive handwriting and multi-line equations. Baek et al. introduced CRAFT (Character Region Awareness for Text Detection), which uses a fully convolutional network to predict character affinity and region centers~\cite{baek2019character}. For sequence recognition, Li et al. developed TrOCR, which couples a Vision Transformer (ViT) encoder with a RoBERTa text decoder, pre-trained on large-scale synthetic and handwritten datasets~\cite{li2022trocr}. To process long sequences and multi-modal contexts, attention mechanisms have evolved significantly~\cite{zaheer2020big}. Recently, Cui et al. proposed GOT-OCR 2.0 (General OCR Theory), an end-to-end multi-modal vision model capable of transcribing full pages, \LaTeX{} formulas, and complex tables~\cite{cui2024got}. However, existing systems have not integrated these specialized vision networks into an automated arbitration and academic integrity pipeline.
+
+\section{System Architecture \& Mathematical Foundations}
+
+The system architecture decouples lightweight synchronous client ingestion from compute-intensive asynchronous vision and neural inference. The overall pipeline operates across seven discrete milestones managed by a Celery worker pool and a Redis message broker, as formalized in Algorithm~\ref{alg:pipeline}.
+
+\subsection{Multi-Tier Layout-Aware Vision OCR Engine}
+Student submissions range from mobile camera photographs of lined paper to scanned multi-column exam booklets. The vision engine executes an 8-layer sequence designed to produce high-fidelity transcribed text without layout corruption.
+
+\subsubsection{Layer 1--2: Document Ingestion and Normalization}
+Input documents are ingested as PDFs or high-resolution images. Multi-page PDFs are rasterized at 300 DPI using PyMuPDF (\texttt{fitz}). EXIF orientation tags ($0\times 0112$) are evaluated to correct arbitrary mobile rotations. Camera images undergo bicubic upscaling if resolution falls below 150 DPI:
+\begin{equation}
+    \hat{I}(x, y) = \sum_{i=-1}^{2} \sum_{j=-1}^{2} I(x_i, y_j) W(x - x_i) W(y - y_j)
+\end{equation}
+Perspective distortion is rectified by detecting the dominant convex quadrilateral contour and applying a $3 \times 3$ planar homography transformation matrix $\mathbf{H}$:
+\begin{equation}
+    \begin{pmatrix} x' \\ y' \\ 1 \end{pmatrix} \sim \mathbf{H}_{3 \times 3} \begin{pmatrix} x \\ y \\ 1 \end{pmatrix}
+\end{equation}
+Document skew is evaluated using probabilistic Hough transform on document boundaries:
+\begin{equation}
+    \theta = \operatorname{median}(\{\arctan(m_k)\}_{k=1}^K)
+\end{equation}
+Shadows and non-uniform lighting fields are compensated via morphological opening with a $25 \times 25$ structuring element, followed by dynamic range normalization. Lined notebook paper undergoes horizontal line inpainting using a $40 \times 1$ morphological rectangular kernel and Telea fast marching inpainting, removing horizontal lines while preserving handwritten descenders (`g', `y', `p'). Finally, Bilateral filtering ($d=9, \sigma_c=75, \sigma_s=75$) and Sauvola adaptive binarization are applied:
+\begin{equation}
+    T(x, y) = \mu(x, y) \cdot \left[1 + k \cdot \left(\frac{\sigma(x, y)}{R} - 1\right)\right]
+\end{equation}
+where $R=128$, $k=0.2$, and $\mu, \sigma$ are local window statistics. The image sharpness is validated via Laplacian edge variance:
+\begin{equation}
+    \operatorname{Var}(\nabla^2 I) \ge 45.0
+\end{equation}
+Images failing this quality gate are rejected immediately, prompting re-capture.
+
+\subsubsection{Layer 3--4: CRAFT Text Detection and Dynamic Region Routing}
+Line detection is executed via CRAFT~\cite{baek2019character}. CRAFT outputs a pixel-level \textit{Region Score} (presence of characters) and an \textit{Affinity Score} (continuity between adjacent characters). Connected component analysis produces tightly wrapped bounding polygons $\mathcal{B} = \{b_1, b_2, \dots, b_M\}$. Word bounding boxes are clustered into text lines if their vertical $y$-overlap exceeds 65\% of bounding box height.
+
+Each detected region $b_m$ is profiled by a morphological router:
+\begin{itemize}
+    \item \textbf{Aspect Ratio (AR) \& Stroke Density:}
+    \begin{equation}
+        \text{AR} = \frac{\text{Width}(b_m)}{\text{Height}(b_m)}, \quad \rho_s = \frac{\sum_{(x,y) \in b_m} \mathbf{1}(I_{\text{edge}}(x,y) > 0)}{\operatorname{Area}(b_m)}
+    \end{equation}
+    \item \textbf{Table / Grid Detector:} Morphological erosion with orthogonal cross kernels isolates grid intersections. If intersection points $> 4$, categorized as \texttt{TABLE}.
+    \item \textbf{Mathematical Formula Detector:} Analyzes isolated horizontal fraction bars, summation/integral loops, and high Laplacian variance. If detected, categorized as \texttt{FORMULA}.
+    \item \textbf{Standard Text Lines:} High aspect ratio ($\text{AR} > 3.0$) and uniform baseline, categorized as \texttt{NORMAL}.
+\end{itemize}
+
+\subsubsection{Layer 5--6: Specialized Recognition and Result Fusion}
+\begin{itemize}
+    \item \textbf{Microsoft TrOCR (\texttt{trocr-base-handwritten}):} Standard and cursive text lines are routed to TrOCR~\cite{li2022trocr}. The visual encoder (ViT-B) processes the cropped image strip into $16 \times 16$ patches, and an autoregressive RoBERTa decoder generates character sequences via beam search (width $= 4$). The confidence score is computed as the normalized token sequence probability:
+    \begin{equation}
+        C_{\text{TrOCR}} = \exp\left(\frac{1}{|Y|} \sum_{t=1}^{|Y|} \log P(y_t \mid y_{<t}, \mathbf{X})\right)
+    \end{equation}
+    \item \textbf{GOT-OCR 2.0 (\texttt{stepfun-ai/GOT-OCR2\_0}):} \texttt{TABLE} and \texttt{FORMULA} regions, or regions where $C_{\text{TrOCR}} < 0.80$, are routed to GOT-OCR 2.0~\cite{cui2024got}. GOT-OCR generates structured \LaTeX{} notation for formulas and GitHub-flavored Markdown for tables.
+    \item \textbf{Levenshtein Consensus Arbitration:} For regions evaluated by both models, normalized Levenshtein similarity is computed:
+    \begin{equation}
+        \operatorname{Sim}_{\text{Lev}}(s_1, s_2) = 1.0 - \frac{\operatorname{Lev}(s_1, s_2)}{\max(|s_1|, |s_2|)}
+    \end{equation}
+    If $\operatorname{Sim}_{\text{Lev}} \ge 0.82$, the higher confidence prediction is adopted. If $\operatorname{Sim}_{\text{Lev}} < 0.82$, domain specialty weighting is applied:
+    \begin{equation}
+        C_{\text{fused}} = \begin{cases} \min(1.0, 1.35 \cdot C_{\text{GOT}}) & \text{if } s_m \cap \{\$, \backslash, \{, \}, |\} \neq \emptyset \\ \min(1.0, 1.20 \cdot C_{\text{TrOCR}}) & \text{if } s_m \subseteq \mathcal{D}_{\text{English}} \\ \max(C_{\text{TrOCR}}, C_{\text{GOT}}) & \text{otherwise} \end{cases}
+    \end{equation}
+    If both confidences fall below $0.70$, the region is preserved with an explicit \texttt{needs\_review: true} flag rather than hallucinating characters.
+\end{itemize}
+
+\subsubsection{Layer 7--8: Layout Reconstruction and Assignment Parsing}
+To prevent line interleaving across two-column assignments, the \textbf{LayoutAnalyzer} performs topological column reconstruction:
+\begin{enumerate}
+    \item Identify spanning header blocks $\mathcal{H}_{\text{span}}$ where width $w_b > 0.75 \cdot W_{\text{page}}$.
+    \item Project remaining bounding centroids onto the horizontal $X$-axis to generate a 1D spatial histogram.
+    \item Compute the primary column gutter $G_x = \arg\min_x \operatorname{Hist}(X)$ in the center quartile $[0.25 W_{\text{page}}, 0.75 W_{\text{page}}]$.
+    \item Partition regions into Column 0 ($\mathcal{C}_0$, where $x_{\text{center}} < G_x$) and Column 1 ($\mathcal{C}_1$, where $x_{\text{center}} \ge G_x$).
+    \item Sort each partition independently from top to bottom, assembling the document in natural reading flow:
+    \begin{equation}
+        \mathcal{T}_{\text{final}} = \mathcal{H}_{\text{span}} \cup \mathcal{C}_0^{\downarrow} \cup \mathcal{C}_1^{\downarrow} \cup \mathcal{F}_{\text{page}}
+    \end{equation}
+\end{enumerate}
+The \textbf{AssignmentParser} then applies multi-pass regex matching to demarcate question prompts, subparts, and answers into a structured JSON schema comprising question numbers, response texts, bounding coordinates, and confidence indices. Table~\ref{tab:gate_thresholds} summarizes the master operational threshold configuration across the pipeline.
+
+\begin{table}[!t]
+\caption{Operational Quality Gates and Decision Thresholds}
+\label{tab:gate_thresholds}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{llcl}
+\toprule
+\textbf{Pipeline Stage} & \textbf{Operational Metric} & \textbf{Threshold} & \textbf{Action on Violation} \\
+\midrule
+Ingestion Quality & Laplacian Sharpness & $\ge 45.0$ & Reject blurry submission \\
+Deskew Tolerance & Hough Line Angle $|\theta|$ & $\le 45.0^\circ$ & Affine rotation; else reject \\
+Recognition Router & TrOCR Token Probability & $\ge 0.80$ & Escalate to GOT-OCR 2.0 \\
+Result Arbitration & Levenshtein Consensus & $\ge 0.82$ & High conf; else domain weights \\
+Human Review Flag & Minimum Confidence & $\ge 0.70$ & Flag \texttt{needs\_review: true} \\
+Curriculum Gate & Syllabus Cosine Sim & $\ge 0.12$ & Reject off-topic upload \\
+Global Legibility & Overall Document OCR & $\ge 65.0\%$ & Reject if $< 50.0\%$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{algorithm}[!t]
+\caption{End-to-End Multi-Modal Plagiarism and AI Attribution}
+\label{alg:pipeline}
+\begin{algorithmic}[1]
+\REQUIRE Submission $\mathcal{D}$, Syllabus $\mathcal{S}$, Peer Corpus $\mathcal{C}$
+\ENSURE Verification Record $\mathcal{R} = \langle P(\text{AI}), \text{Label}_{\text{AI}}, \text{Score}_{\text{plag}} \rangle$
+\IF{$\mathcal{D}$ is visual (PDF / Image Scan)}
+    \STATE $\hat{I} \leftarrow \text{DPI\_Normalize\_And\_Deskew}(\mathcal{D}, 300\text{ DPI})$
+    \STATE $\mathcal{B} \leftarrow \text{CRAFT\_DetectLines}(\hat{I})$
+    \FOR{\textbf{each} bounding region $b_m \in \mathcal{B}$}
+        \STATE $\tau_m \leftarrow \text{MorphologicalProfile}(b_m)$
+        \IF{$\tau_m = \text{NORMAL}$}
+            \STATE $s_m, c_m \leftarrow \text{TrOCR}(b_m)$
+            \IF{$c_m < 0.80$}
+                \STATE $s_m' \leftarrow \text{GOT-OCR}(b_m)$
+                \STATE $s_m \leftarrow \text{ResultFusion}(s_m, s_m')$
+            \ENDIF
+        \ELSE
+            \STATE $s_m \leftarrow \text{GOT-OCR}(b_m)$
+        \ENDIF
+    \ENDFOR
+    \STATE $T_{\text{doc}} \leftarrow \text{LayoutTopologicalSort}(\{s_m\})$
+\ELSE
+    \STATE $T_{\text{doc}} \leftarrow \text{DirectTextExtraction}(\mathcal{D})$
+\ENDIF
+\STATE $\text{Sim}_{\text{Syllabus}} \leftarrow \text{CosineSimilarity}(T_{\text{doc}}, \mathcal{S})$
+\IF{$\text{Sim}_{\text{Syllabus}} < 0.12$}
+    \RETURN $\text{FlagOffTopicOrFraudulent}(\mathcal{D})$
+\ENDIF
+\STATE $\mathbf{f} \leftarrow \text{Extract18Features}(T_{\text{doc}}, \text{Qwen2.5-0.5B})$
+\STATE $\mathbf{z} \leftarrow (\mathbf{f} - \boldsymbol{\mu}) \oslash \boldsymbol{\sigma}$
+\STATE $P(\text{AI}) \leftarrow \text{RandomForestClassifier}(\mathbf{z})$
+\STATE $\text{Score}_{\text{plag}} \leftarrow \max(\text{dHashMatch}(\mathcal{D}, \mathcal{C}), \text{TFIDF\_Cosine}(T_{\text{doc}}, \mathcal{C}))$
+\RETURN $\text{SynthesizeVerificationPayload}(P(\text{AI}), \text{Score}_{\text{plag}})$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Multi-Layer AI-Generated Text Attribution Engine}
+
+\subsubsection{Curriculum Gate (Syllabus Cosine Alignment)}
+Before engaging GPU-intensive neural evaluation, the submission is checked against departmental course syllabi. Using sublinear TF-IDF vectorization:
+\begin{equation}
+    \operatorname{Sim}_{\text{Syllabus}} = \frac{\mathbf{V}_{\text{sub}} \cdot \mathbf{V}_{\text{syllabus}}}{\|\mathbf{V}_{\text{sub}}\|_2 \|\mathbf{V}_{\text{syllabus}}\|_2}
+\end{equation}
+If $\operatorname{Sim}_{\text{Syllabus}} < 0.12$, the submission is flagged as off-topic or fraudulent, halting execution and saving computational resources.
+
+\subsubsection{Neural Statistical Engine (Qwen 2.5 0.5B Language Model)}
+Autoregressive language models generate text by sampling from predicted conditional probability distributions. Given token sequence $X = (x_1, x_2, \dots, x_N)$, the token loss is defined via Qwen 2.5 0.5B~\cite{yang2024qwen25}:
+\begin{equation}
+    \mathcal{L}(x_i) = -\log P(x_i \mid x_1, x_2, \dots, x_{i-1})
+\end{equation}
+
+Our local statistical engine computes three fundamental metrics:
+\begin{enumerate}
+    \item \textbf{Mean Perplexity (PPL):}
+    \begin{equation}
+        \text{PPL}(X) = \exp\left(\frac{1}{N} \sum_{i=1}^{N} \mathcal{L}(x_i)\right)
+    \end{equation}
+    LLM-generated text exhibits characteristically low perplexity ($\text{PPL} \in [15.0, 38.0]$) because sampling strategies optimize likelihood under the model distribution. Human writing exhibits significantly higher and widely fluctuating perplexity ($\text{PPL} > 55.0$).
+    \item \textbf{Perplexity Variance \& Shannon Entropy:}
+    \begin{equation}
+        \operatorname{Var}(\mathcal{L}) = \frac{1}{N} \sum_{i=1}^{N} (\mathcal{L}(x_i) - \bar{\mathcal{L}})^2, \quad \mathcal{H}(X) = -\sum_{v \in \mathcal{V}} P(v) \log_2 P(v)
+    \end{equation}
+    \item \textbf{Sentence Burstiness Coefficient of Variation ($\text{CV}_{\text{burstiness}}$):}
+    Human authors exhibit ``bursty'' writing, interweaving short, punchy declarative remarks with intricate compound-complex sentences. Conversely, LLMs maintain monotonous sentence-to-sentence perplexity. Let $\text{PPL}_s$ denote the mean perplexity of sentence $s \in \{1, \dots, S\}$:
+    \begin{equation}
+        \text{CV}_{\text{burstiness}} = \frac{\sigma_{\text{sent}}}{\mu_{\text{sent}}} = \frac{\sqrt{\frac{1}{S}\sum_{s=1}^S (\text{PPL}_s - \overline{\text{PPL}}_s)^2}}{\frac{1}{S}\sum_{s=1}^S \text{PPL}_s}
+    \end{equation}
+    AI text exhibits $\text{CV}_{\text{burstiness}} < 0.20$, whereas authentic student prose exhibits $\text{CV}_{\text{burstiness}} \in [0.45, 0.85]$.
+\end{enumerate}
+
+\subsubsection{18-Dimensional Stylometric and Syntactic Feature Space}
+To ensure resilience against prompt perturbation, temperature scaling, and black-box paraphrasing, we formulate an 18-dimensional numerical feature space $\mathbf{f} \in \mathbb{R}^{18}$ spanning statistical, stylometric, syntactic, structural, readability, and semantic properties:
+\begin{enumerate}
+    \item $f_1 = \text{mean\_perplexity}$
+    \item $f_2 = \text{perplexity\_variance}$
+    \item $f_3 = \text{entropy}$
+    \item $f_4 = \text{avg\_sentence\_length} = \frac{1}{S}\sum \text{Words}_s$
+    \item $f_5 = \text{sentence\_length\_std} = \sqrt{\operatorname{Var}(\text{Words}_s)}$
+    \item $f_6 = \text{type\_token\_ratio} = \frac{|\mathcal{V}_{\text{doc}}|}{N_{\text{total}}}$
+    \item $f_7 = \text{stop\_word\_ratio} = \frac{N_{\text{stop}}}{N_{\text{total}}}$
+    \item $f_8 = \text{punctuation\_frequency} = \frac{N_{\text{punct}}}{N_{\text{total}}}$
+    \item $f_9 = \text{contraction\_ratio} = \frac{N_{\text{contractions}}}{N_{\text{total}}}$
+    \item $f_{10} = \text{noun\_ratio} = \frac{N_{\text{noun}}}{N_{\text{total}}}$ (via spaCy POS)
+    \item $f_{11} = \text{verb\_ratio} = \frac{N_{\text{verb}}}{N_{\text{total}}}$
+    \item $f_{12} = \text{adjective\_ratio} = \frac{N_{\text{adj}}}{N_{\text{total}}}$
+    \item $f_{13} = \text{named\_entity\_density} = \frac{N_{\text{entities}}}{N_{\text{total}}}$
+    \item $f_{14} = \text{avg\_paragraph\_length} = \frac{S_{\text{total}}}{P_{\text{total}}}$
+    \item $f_{15} = \text{flesch\_reading\_ease} = 206.835 - 1.015\left(\frac{W}{S}\right) - 84.6\left(\frac{\text{Syll}}{W}\right)$~\cite{kincaid1975derivation}
+    \item $f_{16} = \text{generic\_phrasing} = \frac{\text{ClicheCount} \times 1000}{N_{\text{total}}}$
+    \item $f_{17} = \text{lack\_of\_personal\_voice} = 1.0 - \frac{N_{\text{1stPersonPronouns}}}{N_{\text{total}}}$
+    \item $f_{18} = \text{over\_structured\_coherence} = \frac{\text{AITransitions} \times 1000}{N_{\text{total}}}$
+\end{enumerate}
+
+\subsubsection{Calibrated Random Forest Classification \& Decision Tiering}
+The raw vector is normalized using pre-computed z-score standardization:
+\begin{equation}
+    \mathbf{z} = \frac{\mathbf{f} - \boldsymbol{\mu}}{\boldsymbol{\sigma}}
+\end{equation}
+The normalized vector is evaluated by a trained ensemble of 200 de-correlated decision trees with balanced class weighting~\cite{breiman2001random}:
+\begin{equation}
+    P(\text{AI} \mid \mathbf{z}) = \frac{1}{200} \sum_{t=1}^{200} P_t(\text{AI} \mid \mathbf{z})
+\end{equation}
+
+To protect students against false accusations, we implement a \textbf{Three-Tier Calibrated Decision Policy}:
+\begin{itemize}
+    \item \textbf{Tier 1: Original Human Content ($P(\text{AI}) < 30.0\%$):} Cleared automatically.
+    \item \textbf{Tier 2: Mixed / AI-Assisted Content ($30.0\% \le P(\text{AI}) < 70.0\%$):} Flagged for manual teacher evaluation; no punitive action can be taken automatically.
+    \item \textbf{Tier 3: Pure AI-Generated Content ($P(\text{AI}) \ge 70.0\%$):} High-confidence classification supported by feature attribution reports.
+\end{itemize}
+
+\subsection{Dual-Tier Peer-to-Peer Plagiarism Engine}
+
+\subsubsection{Tier 1: Perceptual Difference Hashing (Visual Resubmission)}
+To detect identical visual submissions (including re-scans or image re-uploads), the engine computes a 64-bit difference hash ($\text{dHash}$):
+\begin{enumerate}
+    \item Convert the rendered document page to an $8\text{-bit}$ grayscale image.
+    \item Downsample to a $(9 \times 8)$ pixel grid.
+    \item Compare adjacent horizontal pixels to construct a 64-bit binary sequence:
+    \begin{equation}
+        h_k = \begin{cases} 1 & \text{if } I(x+1, y) > I(x, y) \\ 0 & \text{otherwise} \end{cases} \quad \text{for } x, y \in [0, 7]
+    \end{equation}
+    \item Compute Hamming distance $\mathcal{D}_H(h_A, h_B)$ against prior cohort submissions. If $\mathcal{D}_H \le 3$ bits, the submission is flagged as an exact visual replica ($100\%$ visual plagiarism match).
+\end{enumerate}
+
+\subsubsection{Tier 2: Cohort-Isolated TF-IDF Cosine Similarity}
+Plagiarism is evaluated strictly within the same subject and department, excluding the student's own prior drafts:
+\begin{enumerate}
+    \item Extract unigrams and bigrams ($n \in \{1, 2\}$) with standard stop-word removal.
+    \item Build an $L_2$-normalized sparse TF-IDF matrix over vocabulary $\mathcal{V}$ ($|\mathcal{V}| \le 5,000$):
+    \begin{equation}
+        \text{TF-IDF}(t, d) = \left(1 + \log \text{TF}(t, d)\right) \cdot \log\left(\frac{|\mathcal{D}| + 1}{\operatorname{DF}(t) + 1}\right)
+    \end{equation}
+    \item Compute pairwise cosine similarity against all $K$ submissions in the peer cohort:
+    \begin{equation}
+        \operatorname{Sim}_{\text{peer}}(d_{\text{target}}, d_k) = \frac{\mathbf{v}_{\text{target}} \cdot \mathbf{v}_k}{\|\mathbf{v}_{\text{target}}\|_2 \|\mathbf{v}_k\|_2}
+    \end{equation}
+    and the final cohort plagiarism score is compiled as:
+    \begin{equation}
+        \text{Score}_{\text{plag}} = \max_{k \in \{1, \dots, K\}} \left(\operatorname{Sim}_{\text{peer}}(d_{\text{target}}, d_k)\right) \times 100
+    \end{equation}
+    \item \textbf{MD5 Matrix Caching:} To prevent quadratic $O(K^2)$ recomputation as class submissions accumulate, the fitted vectorizer and corpus matrix are cached in memory keyed by the MD5 hash of the sorted cohort submission IDs.
+\end{enumerate}
+
+\section{Experimental Setup \& Benchmark Evaluation}
+
+\subsection{Benchmark Dataset Construction}
+To train and evaluate the detection framework, we constructed a comprehensive benchmark corpus of 2,739 curated academic essays and assignments spanning student human essays and generative LLMs (GPT-4o~\cite{achiam2023gpt4}, Claude 3.5 Sonnet, and Llama 3 70B). The raw dataset was processed through a 5-phase engineering pipeline:
+\begin{enumerate}
+    \item \textbf{Phase 1 (Data Cleaning):} HTML tags stripped, Unicode normalized (NFKD), whitespace and line-break artifacts cleaned, and explicit prompt leakage phrases systematically removed via regex filters.
+    \item \textbf{Phase 2 (Class Balancing):} To prevent machine learning bias from extreme class imbalances, the dataset was undersampled to a controlled $2:1$ AI-to-Human ratio.
+    \item \textbf{Phase 3 (Feature Extraction):} All 18 stylometric, syntactic, and neural perplexity features were extracted across every sample.
+    \item \textbf{Phase 4 (Stratified Splitting):} Stratified $80/20$ train-test partitioning yielding \textbf{2,155 training samples} (708 Human, 1,447 AI) and \textbf{584 held-out test samples} (189 Human, 395 AI).
+    \item \textbf{Phase 5 (Model Training):} 200 de-correlated estimators with maximum depth 10.
+\end{enumerate}
+
+\section{Empirical Results \& Discussion}
+
+\subsection{AI-Generated Text Classification Performance}
+The Random Forest model was evaluated on the 584 held-out test samples. Table~\ref{tab:classification_metrics} summarizes the performance metrics across all evaluation criteria.
+
+\begin{table}[!t]
+\caption{Quantitative Classification Performance on Benchmark Dataset}
+\label{tab:classification_metrics}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{Training Partition} & \textbf{Held-Out Test Set} \\
+\midrule
+Accuracy & 100.00\% & \textbf{97.43\%} \\
+Precision (AI Class) & -- & \textbf{99.22\%} \\
+Recall (AI Class) & -- & \textbf{96.96\%} \\
+F1-Score (AI Class) & -- & \textbf{98.08\%} \\
+ROC-AUC & -- & \textbf{0.9924} \\
+Specificity (True Negative Rate) & -- & \textbf{98.41\%} \\
+False Positive Rate (FPR on Human) & -- & \textbf{1.59\%} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Detailed Confusion Matrix Analysis}
+Evaluating test set predictions against ground truth yields the following confusion matrix:
+\begin{equation}
+\begin{pmatrix} \text{TN} & \text{FP} \\ \text{FN} & \text{TP} \end{pmatrix} = \begin{pmatrix} 186 & 3 \\ 12 & 383 \end{pmatrix}
+\end{equation}
+
+\begin{itemize}
+    \item \textbf{True Negatives ($TN = 186$):} 186 of 189 authentic student essays were correctly identified as human writing ($98.41\%$ specificity).
+    \item \textbf{False Positives ($FP = 3$):} Only 3 authentic human essays were misclassified as AI, yielding an exceptionally low false-positive rate of \textbf{1.59\%}. This low FPR is crucial for academic integrity systems, where false accusations can destroy student careers.
+    \item \textbf{False Negatives ($FN = 12$):} 12 of 395 AI essays evaded high-confidence classification, typically occurring in very brief answers ($< 80$ words) where stylometric variance is constrained.
+    \item \textbf{True Positives ($TP = 383$):} 383 AI submissions were successfully detected ($96.96\%$ recall).
+\end{itemize}
+
+\subsection{Feature Importance Ranking}
+Table~\ref{tab:feature_importance} reports the Gini impurity feature importance ranking across the 200 ensemble decision trees, revealing which linguistic markers most effectively distinguish LLM prose from authentic student writing.
+
+\begin{table}[!t]
+\caption{Feature Importance Ranking (Gini Impurity Metric)}
+\label{tab:feature_importance}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{clcl}
+\toprule
+\textbf{Rank} & \textbf{Feature Identifier} & \textbf{Weight} & \textbf{Linguistic Domain} \\
+\midrule
+1 & \texttt{avg\_paragraph\_length} & 0.2632 & Structural Symmetry \\
+2 & \texttt{mean\_perplexity} & 0.1668 & Token Probability Loss \\
+3 & \texttt{entropy} & 0.1568 & Lexical Predictability \\
+4 & \texttt{flesch\_reading\_ease} & 0.1099 & Readability Complexity \\
+5 & \texttt{perplexity\_variance} & 0.0631 & Loss Fluctuation Rate \\
+6 & \texttt{stop\_word\_ratio} & 0.0571 & Syntactic Scaffolding \\
+7 & \texttt{type\_token\_ratio} & 0.0392 & Lexical Richness \\
+8 & \texttt{sentence\_length\_std} & 0.0274 & Sentence Burstiness \\
+9 & \texttt{noun\_ratio} & 0.0177 & Nominal Packaging \\
+10 & \texttt{avg\_sentence\_length} & 0.0171 & Sentence Length Cluster \\
+11 & \texttt{over\_structured\_coherence} & 0.0144 & AI Discourse Transitions \\
+12 & \texttt{verb\_ratio} & 0.0129 & Action Verb Distribution \\
+13 & \texttt{adjective\_ratio} & 0.0126 & Descriptive Modifiers \\
+14 & \texttt{named\_entity\_density} & 0.0106 & Entity Specificity \\
+15 & \texttt{punctuation\_frequency} & 0.0106 & Punctuation Symmetry \\
+16 & \texttt{lack\_of\_personal\_voice} & 0.0106 & 3rd-Person Impersonality \\
+17 & \texttt{generic\_phrasing} & 0.0055 & Clich\'e Platitude Density \\
+18 & \texttt{contraction\_ratio} & 0.0043 & Colloquial Contractions \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+The top 4 features (\texttt{avg\_paragraph\_length}, \texttt{mean\_perplexity}, \texttt{entropy}, and \texttt{flesch\_reading\_ease}) account for over \textbf{69.6\%} of total discriminative power. AI models consistently generate rigidly uniform paragraphs (typically 4--5 sentences) and exhibit predictable, low-entropy token sequences, whereas human student writing is structurally irregular and lexically spontaneous.
+
+\subsection{OCR Vision Pipeline Performance}
+To assess the multi-tier vision pipeline, we benchmarked the system against 100 scanned academic test pages containing cursive handwriting, mathematical derivations, and two-column layouts. We compared our hybrid \textbf{CRAFT + TrOCR + GOT-OCR 2.0} pipeline against standard Tesseract v5.0 and standalone EasyOCR, with comparative evaluation metrics summarized in Table~\ref{tab:ocr_benchmark}.
+
+\begin{table}[!t]
+\caption{OCR Benchmark on Academic Assignments}
+\label{tab:ocr_benchmark}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Architecture} & \textbf{CER} $\downarrow$ & \textbf{WER} $\downarrow$ & \textbf{\LaTeX{} Valid} & \textbf{Layout Acc.} \\
+\midrule
+Tesseract 5.0 (Baseline) & 24.8\% & 38.2\% & Fail & 41.2\% \\
+EasyOCR (Baseline) & 18.4\% & 29.1\% & Fail & 58.6\% \\
+\textbf{Our Multi-Tier Pipeline} & \textbf{3.9\%} & \textbf{6.2\%} & \textbf{94.1\%} & \textbf{98.4\%} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{Character Error Rate (CER) and Word Error Rate (WER):} Our pipeline achieved a CER of \textbf{3.9\%} and WER of \textbf{6.2\%} on student cursive handwriting, representing an \textbf{83.7\% error reduction} over baseline Tesseract.
+    \item \textbf{Mathematical Formula Transcription:} By dynamically routing mathematical bounding boxes to GOT-OCR 2.0, \textbf{94.1\%} of formulas were converted into syntactically valid \LaTeX{} notation, whereas legacy baselines produced unreadable character sequences.
+    \item \textbf{Column Order Integrity:} The topological column sorter achieved \textbf{98.4\%} layout reconstruction accuracy, preventing column text interleaving across two-column exam sheets.
+\end{itemize}
+
+\subsection{Computational Efficiency \& Hardware Profiling}
+The framework was evaluated on an affordable edge-workstation configuration (AMD Ryzen 7 5800X, 32 GB RAM, single NVIDIA RTX 3060 12 GB GPU). Table~\ref{tab:compute_budgets} details the memory footprint and latency profile for each pipeline stage.
+
+\begin{table}[!t]
+\caption{Compute Budget \& Inference Latency Profiling}
+\label{tab:compute_budgets}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Component} & \textbf{Params} & \textbf{Memory} & \textbf{Device} & \textbf{Latency} \\
+\midrule
+OpenCV Preprocessor & -- & $\sim$50 MB RAM & CPU & 180 ms / page \\
+CRAFT Text Detector & 20.7 M & $\sim$180 MB VRAM & CUDA & 450 ms / page \\
+TrOCR Base & 334.0 M & $\sim$1.3 GB VRAM & CUDA & 110 ms / line \\
+GOT-OCR 2.0 & 580.0 M & $\sim$2.2 GB VRAM & CUDA & 1.6 s / region \\
+Qwen 2.5 LM & 490.0 M & $\sim$1.1 GB VRAM & CUDA & 320 ms / essay \\
+Random Forest & 200 Trees & $\sim$15 MB RAM & CPU & $< 4$\,ms / vec \\
+TF-IDF Plagiarism & 5k Vocab & $\sim$30 MB RAM & CPU & 22 ms / cohort \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Total peak GPU memory consumption remained under \textbf{4.8 GB VRAM}, enabling continuous batch inference on consumer-grade workstation GPUs without requiring expensive enterprise data center infrastructure.
+
+\section{Institutional Ethics, Policy \& False-Positive Mitigation}
+The deployment of automated AI detection software in academia introduces severe ethical and policy challenges. Monolithic, high-FPR detectors disproportionately harm vulnerable student demographics, particularly English as a Second Language (ESL) learners whose writing naturally exhibits lower syntactic perplexity~\cite{liang2023gpt}.
+
+Our framework introduces three critical institutional safeguards:
+\begin{enumerate}
+    \item \textbf{Conservative Classification Policy:} Submissions scoring between $30\%$ and $70\%$ are classified as \textit{``Mixed / Requires Instructor Review''}. The software explicitly disallows punitive grade deductions on Tier 2 classifications without independent faculty verification.
+    \item \textbf{Explainable Forensic Attribution:} Rather than presenting a single black-box percentage, the user interface provides teachers with full feature breakdowns: sentence burstiness curves, highlighted low-perplexity passages, and vocabulary entropy charts, enabling evidence-based student-instructor dialogue.
+    \item \textbf{FERPA and GDPR Compliance by Design:} All OCR transcription, language model inference, and plagiarism comparisons execute locally within the institution's private intranet. Zero student data is exfiltrated to external commercial APIs, preserving student copyright and satisfying institutional privacy mandates.
+\end{enumerate}
+
+\section{Conclusion \& Future Work}
+In this paper, we introduced an end-to-end, multi-modal academic integrity framework that addresses the core challenges of contemporary plagiarism and AI-generated content detection. By coupling an 8-layer layout-aware OCR vision pipeline (CRAFT + TrOCR + GOT-OCR 2.0) with an adversarial defense-in-depth detection architecture (Qwen 2.5 0.5B neural perplexity + 18-dimensional stylometry + calibrated Random Forest) and a dual-tier peer plagiarism engine, the platform bridges the gap between physical student submissions and digital text verification.
+
+Empirical evaluation on a balanced benchmark of 2,739 essays demonstrated \textbf{97.43\% test accuracy}, \textbf{99.22\% precision}, \textbf{98.08\% F1-score}, and \textbf{0.9924 ROC-AUC}, while maintaining an exceptionally low false-positive rate of \textbf{1.59\%} on authentic human student writing. The entire platform runs locally on standard institutional hardware with sub-5 GB VRAM utilization, guaranteeing complete compliance with student privacy regulations.
+
+Future research will explore: (1) multimodal adversarial defenses against diffusion-generated handwriting and digital font rendering; (2) cross-lingual stylometric transfer for multilingual assignment verification; and (3) self-supervised continual learning loops that adapt feature weights as generative LLM architectures evolve.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

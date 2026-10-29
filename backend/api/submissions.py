@@ -13,9 +13,10 @@ import secrets
 from datetime import datetime
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, BackgroundTasks, status
 from sqlalchemy.orm import Session
-from core.dependencies import get_db, get_current_user
+from core.dependencies import get_db, get_current_user, require_role
+from core.authorization import check_submission_access
 from core.config import get_settings
 from models.user import User
 from models.submission import Submission, SubmissionStatus
@@ -33,11 +34,13 @@ def submit_assignment(
     subject: str = Form(...),
     assignment_title: Optional[str] = Form("Assignment 1"),
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("student", "admin")),
     db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
     """
     Accept an assignment file upload (PDF, DOCX, TXT, PNG, JPG, JPEG) and queue processing.
+    Returns immediately (<200ms) — processing runs in a non-blocking background task.
     """
 
     # ── Validate file type (first-class JPG, PNG, DOCX, PDF, TXT) ──
@@ -49,7 +52,7 @@ def submit_assignment(
             detail=f"Unsupported file type: {ext}. Allowed: {', '.join(allowed_extensions)}",
         )
 
-    # ── Save file to disk ─────────────────────────────────────
+    # ── Save file to disk (chunked streaming — avoids loading entire file into RAM) ──
     upload_dir = os.path.join(settings.UPLOAD_DIR)
     os.makedirs(upload_dir, exist_ok=True)
 
@@ -58,10 +61,12 @@ def submit_assignment(
     filepath = os.path.join(upload_dir, unique_name)
 
     try:
+        bytes_written = 0
         with open(filepath, "wb") as buffer:
-            content = file.file.read()
-            buffer.write(content)
-        logger.info(f"File saved: {filepath} ({len(content)} bytes)")
+            while chunk := file.file.read(1024 * 1024):  # 1 MB chunks
+                buffer.write(chunk)
+                bytes_written += len(chunk)
+        logger.info(f"File saved: {filepath} ({bytes_written} bytes)")
     except Exception as e:
         logger.error(f"File save failed: {e}")
         raise HTTPException(
@@ -84,29 +89,21 @@ def submit_assignment(
     db.commit()
     db.refresh(submission)
 
-    # ── Process asynchronously (Redis + Celery) or fallback ───
+    # ── Process asynchronously (Celery → BackgroundTasks fallback) ──
     from tasks.process_submission import process_submission_task, process_submission_sync
-    celery_task_id = "sync_mode"
+    celery_task_id = "background_mode"
     try:
         task = process_submission_task.delay(submission.id)
-        logger.info(f"Submission #{submission.id} queued as task {task.id}.")
+        logger.info(f"Submission #{submission.id} queued as Celery task {task.id}.")
         celery_task_id = task.id
         submission.celery_task_id = celery_task_id
         db.commit()
     except Exception as e:
-        logger.warning(f"Async Celery queue unavailable ({e}). Running synchronously...")
-        try:
-            submission.celery_task_id = "sync_mode"
-            db.commit()
-            process_submission_sync(submission.id)
-        except Exception as sync_err:
-            logger.error(f"Synchronous processing failed: {sync_err}")
-            submission.status = SubmissionStatus.failed
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Analysis failed: {str(sync_err)}"
-            )
+        logger.warning(f"Celery unavailable ({e}). Scheduling via BackgroundTasks (non-blocking)...")
+        submission.celery_task_id = "background_mode"
+        db.commit()
+        # Non-blocking: runs in a thread pool after the response is sent
+        background_tasks.add_task(process_submission_sync, submission.id)
 
     return SubmitResponse(
         message="Assignment uploaded and queued for forensic OCR & Plagiarism analysis.",
@@ -118,7 +115,7 @@ def submit_assignment(
 
 @router.get("/submissions/my", response_model=List[StudentSubmissionItem])
 def get_my_submissions(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("student")),
     db: Session = Depends(get_db),
 ):
     """
@@ -158,12 +155,14 @@ def get_my_submissions(
 @router.post("/submissions/{submission_id}/lock", response_model=LockSubmissionResponse)
 def lock_submission(
     submission_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Finalize and permanently lock an assignment submission.
     Generates an official verification receipt token and timestamp.
+    Enforces object-level authorization.
     """
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
@@ -172,11 +171,8 @@ def lock_submission(
             detail="Submission not found"
         )
 
-    if submission.student_id != current_user.id and current_user.role.value not in ("teacher", "hod"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to lock this submission"
-        )
+    # Object-level authorization check
+    check_submission_access(current_user, submission, action="lock", db=db, request=request)
 
     if submission.status == SubmissionStatus.failed:
         raise HTTPException(
@@ -215,11 +211,13 @@ def lock_submission(
 @router.delete("/submissions/{submission_id}")
 def delete_submission(
     submission_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Discard an unlocked draft/review submission before final lock.
+    Enforces object-level ownership authorization.
     """
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
@@ -228,11 +226,8 @@ def delete_submission(
             detail="Submission not found"
         )
 
-    if submission.student_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this submission"
-        )
+    # Object-level authorization check (students only on own submissions, admin)
+    check_submission_access(current_user, submission, action="delete", db=db, request=request)
 
     if submission.is_locked:
         raise HTTPException(
@@ -261,12 +256,16 @@ def delete_submission(
 @router.get("/download/{submission_id}")
 def download_submission(
     submission_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Download the original submitted file.
-    Only teachers, HODs, or the student who submitted it can download it.
+    Enforces object-level authorization:
+    - Student: can only download own file.
+    - Teacher: can only download if assigned to course/section.
+    - HOD / Admin: full institutional oversight.
     """
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
     if not submission:
@@ -275,11 +274,8 @@ def download_submission(
             detail="Submission not found"
         )
         
-    if current_user.role.value not in ("teacher", "hod") and submission.student_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to download this file"
-        )
+    # Object-level authorization check
+    check_submission_access(current_user, submission, action="download", db=db, request=request)
         
     if not os.path.exists(submission.filepath):
         raise HTTPException(

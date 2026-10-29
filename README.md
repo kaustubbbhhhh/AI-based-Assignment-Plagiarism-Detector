@@ -12,7 +12,7 @@ An enterprise-grade, role-based platform designed for academic institutions to v
   - Neural text recognition using **Microsoft TrOCR** (`trocr-base-handwritten`) with CRAFT line segmentation.
   - High-accuracy fallbacks with **EasyOCR** and **Tesseract**.
 - **🧠 Multi-Layer AI-Generated Content Detection:**
-  - **Statistical Neural Engine:** Computes token-level perplexity, loss variance (burstiness), and entropy using local `distilgpt2`.
+  - **Statistical Neural Engine:** Computes token-level perplexity, sentence-level loss variance (burstiness CV), and entropy using modern **Qwen 2.5 (0.5B)**.
   - **Machine Learning Classification:** Trained Random Forest classifier evaluating 20+ stylistic, linguistic, and statistical features.
   - **Semantic Context Engine:** Validates subject relevance and topical alignment against course syllabi.
 - **🔍 Peer-to-Peer Plagiarism Engine:**
@@ -38,10 +38,10 @@ flowchart TD
     subgraph Backend Pipeline
         Backend --> DB[(MySQL / PostgreSQL / SQLite)]
         Backend --> Redis[(Redis Broker)]
-        Redis --> CeleryWorker[Celery Background Worker]
+        CeleryWorker[Celery Background Worker]
         
-        CeleryWorker --> OCR[OCR Pipeline\nOpenCV + TrOCR + EasyOCR]
-        CeleryWorker --> AI[AI Detection Engine\nDistilGPT2 + Random Forest]
+        CeleryWorker --> OCR[OCR Pipeline\nOpenCV + CRAFT + TrOCR + GOT-OCR 2.0]
+        CeleryWorker --> AI[AI Detection Engine\nQwen 2.5 + Random Forest]
         CeleryWorker --> Plag[Plagiarism Engine\nTF-IDF + Cosine Similarity]
         CeleryWorker --> Sem[Semantic Engine\nSubject Relevance Validation]
     end
@@ -60,7 +60,7 @@ flowchart TD
 | **Backend API** | FastAPI, Python 3.10+, Uvicorn, Pydantic v2 |
 | **Task Queue** | Celery, Redis |
 | **Database** | MySQL (PyMySQL) / PostgreSQL (psycopg3) / SQLite (via SQLAlchemy 2.0) |
-| **Machine Learning & NLP** | PyTorch, Hugging Face Transformers (`distilgpt2`, `trocr`), Scikit-learn, NLTK, OpenCV |
+| **Machine Learning & NLP** | PyTorch, Hugging Face Transformers (`Qwen/Qwen2.5-0.5B`, `trocr`, `GOT-OCR2_0`), Scikit-learn, NLTK, OpenCV |
 | **Document Processing** | PyMuPDF (fitz), PyPDF2, python-docx, Pillow, EasyOCR, Pytesseract |
 | **Security & Auth** | JWT (`python-jose`), Passlib (`bcrypt`), SMTP Email Verification |
 
@@ -70,17 +70,20 @@ flowchart TD
 
 ```
 ├── backend/
-│   ├── api/                     # FastAPI route controllers (auth, submissions, reports, analytics)
-│   ├── core/                    # Core configuration, database engine, security & dependencies
+│   ├── api/                     # FastAPI route controllers (auth, admin, users, submissions, reports, analytics)
+│   ├── core/                    # Security, auth middlewares (CSRF, headers, rate limiter), DB config
 │   ├── data_pipeline/           # 5-phase ML feature engineering & training pipeline
-│   ├── models/                  # SQLAlchemy ORM models (User, Submission, Report)
-│   ├── schemas/                 # Pydantic request/response validation models
+│   ├── models/                  # SQLAlchemy ORM models (User, Subject, Session, Submission, Report)
+│   ├── schemas/                 # Pydantic request/response validation schemas
 │   ├── services/
 │   │   ├── ml_services/         # Pre-trained ML classifiers, feature extractors & statistical engine
 │   │   ├── ai_detection.py      # Multi-layer AI detection service
+│   │   ├── audit_service.py     # Administrative audit logging
 │   │   ├── email_service.py     # SMTP password reset email dispatcher
 │   │   ├── ocr_service.py       # Handwritten & digital OCR extraction service
 │   │   ├── plagiarism.py        # TF-IDF cosine similarity plagiarism comparator
+│   │   ├── rate_limiter.py      # IP & account rate-limiting service
+│   │   ├── session_service.py   # Secure session token hashing & rotation
 │   │   └── text_extraction.py   # Multi-format document text extraction (.pdf, .docx, .txt, images)
 │   ├── tasks/                   # Celery asynchronous task definitions
 │   ├── init_mysql.py            # Database initialization script
@@ -88,8 +91,11 @@ flowchart TD
 │   ├── requirements.txt         # Python dependencies
 │   └── main.py                  # FastAPI application entry point
 ├── src/                         # React frontend source code
-│   ├── components/              # Shared UI components (Navbar, ProtectedRoutes)
-│   ├── pages/                   # Portal views (Student, Teacher, HOD, Login, Register, Password Reset)
+│   ├── components/              # Shared UI components (Navbar, ProtectedRoute)
+│   ├── context/                 # Application authentication context & state
+│   ├── layouts/                 # Portal & Admin layout wrappers
+│   ├── pages/                   # Academic portals (Student, Teacher, HOD, Admin, Login, Register)
+│   ├── utils/                   # Frontend helpers & API clients
 │   ├── App.jsx                  # React application router
 │   └── index.css                # Global stylesheet and custom component design tokens
 ├── public/                      # Static web assets
@@ -191,13 +197,14 @@ celery -A tasks.celery_app worker --loglevel=info --pool=threads
 
 ## 👥 Demo Credentials
 
-The `seed_users.py` script provisions the following accounts:
+The `seed_users.py` script provisions the following demo accounts:
 
 | Role | Email | Password | Description |
 |---|---|---|---|
-| **Student** | `student@demo.edu` | `pass123` | Upload assignments, view plagiarism scores, inspect AI detection breakdowns & OCR previews |
-| **Teacher** | `teacher@demo.edu` | `pass123` | Review batch submissions, flag suspect papers, inspect side-by-side similarities |
-| **HOD** | `hod@demo.edu` | `pass123` | Institutional analytics, batch comparison, risk factor breakdown & departmental metrics |
+| **Admin** | `admin@plagiarismai.edu` | `Admin@1234` | System administrator with full access to user management, subject assignment, audit logs, and security controls |
+| **Student** | `student@demo.edu` | `Password123` | Upload assignments, view plagiarism scores, inspect AI detection breakdowns & OCR previews |
+| **Teacher** | `teacher@demo.edu` | `Password123` | Review batch submissions, flag suspect papers, inspect side-by-side similarities |
+| **HOD** | `hod@demo.edu` | `Password123` | Institutional analytics, batch comparison, risk factor breakdown & departmental metrics |
 
 ---
 
@@ -206,6 +213,9 @@ The `seed_users.py` script provisions the following accounts:
 Run backend diagnostic and unit test suites:
 ```bash
 cd backend
+python test_admin_system.py
+python test_auth_security.py
+python test_rbac_authorization.py
 python test_ai_layers.py
 python test_forgot_password.py
 python test_v2_integration.py

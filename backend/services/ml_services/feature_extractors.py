@@ -2,7 +2,7 @@
 Feature Extractors for Live AI Detection System
 =================================================
 Extracts the full 18-feature vector from essay text at inference time.
-Reuses the existing statistical_engine (DistilGPT-2) and semantic_engine
+Reuses the existing statistical_engine (Qwen 2.5 0.5B) and semantic_engine
 for their respective features, and adds stylometric + readability features.
 
 This module is used by ai_detection.py to feed the trained RF classifier.
@@ -310,7 +310,7 @@ def extract_and_predict(text: str, stats: dict) -> dict:
         # 1. Gather all features
         features = {}
 
-        # Statistical (from pre-computed stats — avoids running DistilGPT-2 twice)
+        # Statistical (from pre-computed stats — avoids running Qwen 2.5 twice)
         features["mean_perplexity"] = stats.get("mean_perplexity", 50.0)
         features["perplexity_variance"] = stats.get("perplexity_variance", 1.0)
         features["entropy"] = stats.get("entropy", 3.0)

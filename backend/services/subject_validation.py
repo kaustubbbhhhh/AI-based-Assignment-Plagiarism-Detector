@@ -1,7 +1,20 @@
 """
-Subject Validation Service.
-Provides semantic matching to ensure the uploaded assignment matches the chosen subject.
-Prevents students from uploading irrelevant files (e.g., Physics assignments to a CS class).
+Subject Validation Service — FUTURE SCOPE (Not currently active in pipeline).
+
+This module is retained for future implementation of a dynamic, database-driven
+subject relevance validation system. The planned approach:
+
+  1. Teachers upload syllabus PDFs per subject
+  2. System auto-extracts keywords (via TF-IDF/RAKE or Gemini API)
+  3. Keywords are stored in a `subject_keywords` DB table (admin-editable)
+  4. Validation at submission time queries DB instead of hardcoded lists
+
+The previous hardcoded keyword approach was removed from the processing pipeline
+(backend/tasks/process_submission.py) because static keywords lacked coverage
+and couldn't scale across subjects without bloating the codebase.
+
+When re-enabling, integrate this back as a pipeline step in process_submission.py
+and replace SUBJECT_KEYWORDS with a database query.
 """
 
 import logging

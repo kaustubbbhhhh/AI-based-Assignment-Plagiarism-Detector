@@ -3,7 +3,7 @@ Run the full detection pipeline on Scan document20260813_183154.pdf.
 Stages:
   1. OCR & Text Extraction (PyMuPDF + Local OCR / EasyOCR + TrOCR)
   2. Subject & Curriculum Relevance Validation
-  3. Two-Layer AI Detection Engine (DistilGPT-2 + Stylometrics + Random Forest)
+  3. Two-Layer AI Detection Engine (Qwen 2.5 + Stylometrics + Random Forest)
   4. Peer Plagiarism Detection (TF-IDF Cosine Similarity)
   5. Forensic Data Mining Metrics (Stylometrics, Lexical Diversity)
   6. Database Persistence & Submission Status Sync
@@ -121,10 +121,11 @@ def main():
     l1 = ai_result.get("layer1_stats")
     l2 = ai_result.get("layer2_semantics")
     if l1:
-        print("\n     [Layer 1: Statistical Analysis (DistilGPT-2)]")
+        print("\n     [Layer 1: Statistical Analysis (Qwen 2.5 0.5B)]")
         print(f"       * Mean Perplexity    : {l1.get('mean_perplexity', 'N/A')}")
         print(f"       * Mean Entropy       : {l1.get('mean_entropy', 'N/A')}")
         print(f"       * Burstiness (Var)   : {l1.get('burstiness', 'N/A')}")
+        print(f"       * Burstiness (CV)    : {l1.get('burstiness_cv', 'N/A')}")
         print(f"       * Stat AI Likelihood : {l1.get('statistical_ai_likelihood', 'N/A')}%")
         print(f"       * Distribution Type  : {l1.get('pattern_type', 'N/A')}")
     if l2:

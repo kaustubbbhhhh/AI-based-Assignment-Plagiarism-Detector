@@ -5,9 +5,10 @@ Works in both sync mode (no Redis) and async mode (Celery).
 """
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from core.dependencies import get_db, get_current_user
+from core.authorization import check_submission_access
 from models.user import User
 from models.submission import Submission
 from models.report import Report
@@ -20,12 +21,14 @@ router = APIRouter(prefix="/api", tags=["Status"])
 @router.get("/status/{submission_id}", response_model=SubmissionStatusResponse)
 def get_submission_status(
     submission_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Poll the current processing status of a submission.
     Includes OCR score, AI score, Plagiarism score, metadata, and lock state.
+    Enforces object-level authorization (student ownership, teacher course scope, admin/hod).
     """
 
     submission = db.query(Submission).filter(Submission.id == submission_id).first()
@@ -34,6 +37,9 @@ def get_submission_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Submission #{submission_id} not found.",
         )
+
+    # Object-level authorization check
+    check_submission_access(current_user, submission, action="read", db=db, request=request)
 
     # ── Build base response ───────────────────────────────────
     response = SubmissionStatusResponse(

@@ -72,7 +72,8 @@ backend/models/trocr_finetuned/
 *.h5
 
 # --- OCR Generated Datasets & Uploads ---
-backend/uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
 backend/ocr_dataset/
 
 # --- Data Pipeline Intermediate Outputs ---
@@ -135,4 +136,57 @@ backend/dummy_test.txt
 backend/test_upload.txt
 backend/test_image_1.jpg
 backend/test_image_2.jpg
+
+# --- Scan Output Artifacts & Test Dumps ---
+ai_detection_scan_report.json
+colab_scan_report.json
+colab_extracted_text.txt
+ocr_pipeline_extracted.json
+page*_got_output.txt
+page*_output.txt
+*_scan_report.json
+*_extracted_text.txt
+*_extracted.json
+*.scan.json
+
+# --- PyTorch / HuggingFace Training Checkpoints & Model Caches ---
+checkpoint-*/
+**/checkpoint-*/
+runs/
+wandb/
+*.ckpt
+*.tflite
+*.joblib
+*.weights
+hf_cache/
+torch_cache/
+.cache/
+**/.cache/
+
+# --- Local Databases, SQL Dumps & Backups ---
+*.sql
+*.sql.gz
+*.dump
+backup/
+backups/
+
+# --- General Logs & Python Outputs ---
+*.log
+backend/*.log
+logs/
+backend/logs/
+
+# --- Archives & Zips (Prevent committing Drive backup archives) ---
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# --- Code Quality & Environment Caches ---
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.eslintcache/
+
 

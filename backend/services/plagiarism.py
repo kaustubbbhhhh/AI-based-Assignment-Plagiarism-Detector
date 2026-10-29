@@ -2,20 +2,38 @@
 Plagiarism Detection Service.
 Uses TF-IDF vectorization and cosine similarity to compare
 a submission against all other submissions in the database.
+Includes in-memory caching of fitted vectorizers for fast repeat comparisons.
 """
 
 import logging
+import hashlib
 from typing import List
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
+# ── In-memory cache for fitted TF-IDF vectorizers and corpus matrices ──
+# Key: MD5 hash of sorted corpus texts → (vectorizer, corpus_tfidf_matrix)
+# This avoids re-fitting the vectorizer on every new submission when the
+# peer corpus hasn't changed (same subject, same set of prior submissions).
+_vectorizer_cache = {}
+_MAX_CACHE_SIZE = 50  # Limit to prevent unbounded memory growth
+
+
+def _corpus_hash(corpus: List[str]) -> str:
+    """Compute a stable hash of the corpus for cache lookup."""
+    combined = "\n".join(sorted(corpus))
+    return hashlib.md5(combined.encode("utf-8", errors="ignore")).hexdigest()
+
 
 def check_plagiarism(text: str, corpus: List[str]) -> dict:
     """
     Compare `text` against a corpus of existing submissions.
     Returns the maximum similarity score as a plagiarism percentage.
+
+    Uses cached TF-IDF matrices when the same text+corpus combination
+    is seen again, avoiding expensive fit_transform.
 
     Args:
         text: The submission text to check.
@@ -31,30 +49,37 @@ def check_plagiarism(text: str, corpus: List[str]) -> dict:
     if not text or len(text.strip()) < 20:
         return {"plagiarism_score": 0.0, "max_similarity": 0.0, "matches_found": 0}
 
-    # ── Semantic Subject / Context Matching (Roadmap Phase 1) ────
-    # In a real scenario, this would use semantic embeddings.
-    # For now, we do a basic heuristic: does the text contain words related to the subject?
-    # This prevents submitting Physics assignments to Computer Science categories.
-    if corpus is not None:  # Assuming we can pass the subject name down later, for now we skip strict rejection if we don't have subject metadata here.
-        pass
-
     if not corpus:
         logger.info("No corpus available for plagiarism comparison — returning 0%.")
         return {"plagiarism_score": 0.0, "max_similarity": 0.0, "matches_found": 0}
 
     try:
-        # ── Build TF-IDF matrix ───────────────────────────────
+        # ── Build TF-IDF matrix (identical to original logic) ─
         # Place the target text first, then the corpus
         all_documents = [text] + corpus
 
-        vectorizer = TfidfVectorizer(
-            max_features=5000,
-            stop_words="english",
-            ngram_range=(1, 2),     # unigrams + bigrams for better matching
-            min_df=1,
-        )
+        # Check cache for this exact combination
+        cache_key = _corpus_hash(all_documents)
 
-        tfidf_matrix = vectorizer.fit_transform(all_documents)
+        if cache_key in _vectorizer_cache:
+            tfidf_matrix = _vectorizer_cache[cache_key]
+            logger.info("Plagiarism check using cached TF-IDF matrix (fast path).")
+        else:
+            vectorizer = TfidfVectorizer(
+                max_features=5000,
+                stop_words="english",
+                ngram_range=(1, 2),     # unigrams + bigrams for better matching
+                min_df=1,
+            )
+            tfidf_matrix = vectorizer.fit_transform(all_documents)
+
+            # Evict oldest entry if cache is full
+            if len(_vectorizer_cache) >= _MAX_CACHE_SIZE:
+                oldest_key = next(iter(_vectorizer_cache))
+                del _vectorizer_cache[oldest_key]
+
+            _vectorizer_cache[cache_key] = tfidf_matrix
+            logger.info("Plagiarism check: fitted new TF-IDF vectorizer and cached result.")
 
         # ── Compute cosine similarity ─────────────────────────
         # Compare index 0 (our submission) against all others

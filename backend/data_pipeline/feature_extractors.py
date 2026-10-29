@@ -293,23 +293,34 @@ _stat_device = None
 
 
 def _load_stat_model():
-    """Lazy-load DistilGPT-2 model and tokenizer."""
+    """Lazy-load Qwen 2.5 0.5B model and tokenizer."""
     global _stat_model, _stat_tokenizer, _stat_device
     if _stat_model is not None:
         return
 
     import torch
-    from transformers import GPT2LMHeadModel, GPT2TokenizerFast
+    from transformers import AutoTokenizer, AutoModelForCausalLM
 
+    repo = "Qwen/Qwen2.5-0.5B"
     _stat_device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if _stat_device == "cuda" else torch.float32
+
     try:
-        _stat_tokenizer = GPT2TokenizerFast.from_pretrained("distilgpt2", local_files_only=True)
-        _stat_model = GPT2LMHeadModel.from_pretrained("distilgpt2", local_files_only=True).to(_stat_device)
+        _stat_tokenizer = AutoTokenizer.from_pretrained(repo, local_files_only=True)
+        _stat_model = AutoModelForCausalLM.from_pretrained(
+            repo, dtype=dtype, low_cpu_mem_usage=True, local_files_only=True
+        ).to(_stat_device)
     except Exception:
-        _stat_tokenizer = GPT2TokenizerFast.from_pretrained("distilgpt2")
-        _stat_model = GPT2LMHeadModel.from_pretrained("distilgpt2").to(_stat_device)
+        _stat_tokenizer = AutoTokenizer.from_pretrained(repo)
+        _stat_model = AutoModelForCausalLM.from_pretrained(
+            repo, dtype=dtype, low_cpu_mem_usage=True
+        ).to(_stat_device)
+
+    if _stat_tokenizer.pad_token is None:
+        _stat_tokenizer.pad_token = _stat_tokenizer.eos_token
+
     _stat_model.eval()
-    logger.info(f"Loaded distilgpt2 on {_stat_device}")
+    logger.info(f"Loaded Qwen 2.5 0.5B on {_stat_device}")
 
 
 def extract_statistical_features(text: str) -> dict:

@@ -3,7 +3,7 @@ User SQLAlchemy model.
 Roles: student, teacher, hod
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SAEnum, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
@@ -14,6 +14,7 @@ class UserRole(str, enum.Enum):
     student = "student"
     teacher = "teacher"
     hod = "hod"
+    admin = "admin"
 
 
 class User(Base):
@@ -25,12 +26,15 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(SAEnum(UserRole), nullable=False, default=UserRole.student)
     phone = Column(String(15), nullable=True)
+    is_verified = Column(Boolean, nullable=False, default=True)
+    must_change_password = Column(Boolean, nullable=False, default=False)
 
     # ── Student-specific fields ───────────────────────────────
     enrollment_no = Column(String(30), unique=True, nullable=True, index=True)
     father_phone = Column(String(15), nullable=True)
     mother_phone = Column(String(15), nullable=True)
     session = Column(String(20), nullable=True)              # e.g. 2024-2028
+    semester = Column(Integer, nullable=True)                 # e.g. 1-8
 
     # ── Teacher-specific fields ───────────────────────────────
     teacher_id = Column(String(30), unique=True, nullable=True, index=True)
@@ -47,6 +51,7 @@ class User(Base):
 
     # Relationships
     submissions = relationship("Submission", back_populates="student", lazy="dynamic")
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, role={self.role})>"

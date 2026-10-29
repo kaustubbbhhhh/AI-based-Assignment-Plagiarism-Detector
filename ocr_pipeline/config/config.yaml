@@ -1,0 +1,101 @@
+# OCR Pipeline Master Configuration
+
+models:
+  craft:
+    enabled: true
+    device: "auto"              # "auto", "cuda", or "cpu"
+    text_threshold: 0.7
+    link_threshold: 0.4
+    low_text: 0.4
+    min_size: 15                # Minimum box size in pixels
+    slope_ths: 0.1
+    ycenter_ths: 0.5
+    height_ths: 0.5
+    width_ths: 0.5
+    add_margin: 0.15            # Add 15% margin to cropped bounding boxes
+
+  trocr:
+    enabled: true
+    model_path: "microsoft/trocr-base-handwritten"
+    fallback_model: "microsoft/trocr-base-handwritten"
+    device: "auto"              # "auto", "cuda", or "cpu"
+    fp16: true
+    batch_size: 8
+    max_new_tokens: 128
+    num_beams: 4
+    early_stopping: true
+
+  got:
+    enabled: true
+    lazy_load: true             # Do not load weights into VRAM until required
+    model_name: "stepfun-ai/GOT-OCR2_0"
+    device: "auto"              # "auto", "cuda", or "cpu"
+    fp16: true
+    max_new_tokens: 1024
+    region_mode: true           # Support cropped equation/table OCR
+    document_mode: true         # Support full page context OCR
+
+  qwen2_vl:
+    enabled: true
+    model_id: "Qwen/Qwen2-VL-2B-Instruct"
+    load_in_4bit: true
+    device: "auto"
+    max_new_tokens: 512
+
+routing:
+  confidence_threshold: 0.80    # Below this, TrOCR escalates to Qwen / GOT
+  escalate_to_qwen: false       # Tabular documents use Stage 6b holistic column transcription
+  escalate_to_got: false
+  preserve_raw_outputs: true
+
+  # Feature thresholds for Region Analyzer
+  table:
+    min_horizontal_lines: 2
+    min_vertical_lines: 2
+    min_area_ratio: 0.05        # Region area relative to page
+
+  math:
+    symbol_density_threshold: 0.03
+    aspect_ratio_min: 0.8
+    aspect_ratio_max: 8.0
+    gradient_variance_min: 120.0
+
+  uncertain:
+    min_craft_confidence: 0.60
+    escalation_trocr_confidence: 0.80
+
+fusion:
+  agreement_similarity_threshold: 0.82
+  review_threshold: 0.70
+  weights:
+    text:
+      trocr: 0.70
+      got: 0.30
+    math:
+      trocr: 0.15
+      got: 0.85
+    table:
+      trocr: 0.10
+      got: 0.90
+    uncertain:
+      trocr: 0.50
+      got: 0.50
+
+layout:
+  max_columns: 3
+  column_gap_ratio: 0.035
+  line_y_overlap_ratio: 0.45
+  header_zone_ratio: 0.18       # Top 18% of page for headers/titles
+
+preprocessing:
+  target_dpi: 300
+  max_page_dimension: 2500
+  deskew_enabled: true
+  shadow_removal_enabled: true
+  adaptive_threshold_enabled: true
+  denoise_enabled: true
+  denoise_diameter: 5
+  denoise_sigma_color: 50
+  denoise_sigma_space: 50
+  ruled_line_suppression_enabled: true
+  ruled_line_kernel_ratio: 0.04
