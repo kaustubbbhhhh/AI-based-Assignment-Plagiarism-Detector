@@ -9,8 +9,8 @@ An enterprise-grade, role-based platform designed for academic institutions to v
 - **🔐 Role-Based Access Control (RBAC):** Dedicated portals tailored for **Students**, **Teachers**, and **Heads of Department (HOD)** with granular permissions and actionable insights.
 - **👁️ Multi-Tier OCR Vision Pipeline:**
   - Robust document preprocessing: adaptive thresholding, deskewing, shadow removal, and contrast enhancement via OpenCV.
-  - Neural text recognition using **Microsoft TrOCR** (`trocr-base-handwritten`) with CRAFT line segmentation.
-  - High-accuracy fallbacks with **EasyOCR** and **Tesseract**.
+  - Neural text recognition using **Microsoft TrOCR** (`trocr-base-handwritten`) and **Qwen 2-VL** vision models.
+  - High-accuracy offline fallback with **Tesseract**.
 - **🧠 Multi-Layer AI-Generated Content Detection:**
   - **Statistical Neural Engine:** Computes token-level perplexity, sentence-level loss variance (burstiness CV), and entropy using modern **Qwen 2.5 (0.5B)**.
   - **Machine Learning Classification:** Trained Random Forest classifier evaluating 20+ stylistic, linguistic, and statistical features.
@@ -61,7 +61,7 @@ flowchart TD
 | **Task Queue** | Celery, Redis |
 | **Database** | MySQL (PyMySQL) / PostgreSQL (psycopg3) / SQLite (via SQLAlchemy 2.0) |
 | **Machine Learning & NLP** | PyTorch, Hugging Face Transformers (`Qwen/Qwen2.5-0.5B`, `trocr`, `GOT-OCR2_0`), Scikit-learn, NLTK, OpenCV |
-| **Document Processing** | PyMuPDF (fitz), PyPDF2, python-docx, Pillow, EasyOCR, Pytesseract |
+| **Document Processing** | PyMuPDF (fitz), PyPDF2, python-docx, Pillow, Pytesseract |
 | **Security & Auth** | JWT (`python-jose`), Passlib (`bcrypt`), SMTP Email Verification |
 
 ---

@@ -134,11 +134,9 @@ async def lifespan(app: FastAPI):
     # ── Pre-warm ML models (eliminates 10-15s cold-start on first request) ──
     logger.info("🔥 Pre-warming ML models...")
     try:
-        from services.ocr_service import get_qwen_ocr_model, get_easyocr_reader
+        from services.ocr_service import get_qwen_ocr_model
         get_qwen_ocr_model()
         logger.info("  ✓ Qwen 2-VL Vision OCR model loaded for assignments.")
-        get_easyocr_reader()
-        logger.info("  ✓ EasyOCR reader loaded.")
     except Exception as e:
         logger.warning(f"  ⚠ Qwen OCR model pre-warming failed (non-fatal): {e}")
 

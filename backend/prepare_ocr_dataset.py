@@ -11,15 +11,14 @@ import cv2
 import fitz  # PyMuPDF
 import numpy as np
 import pandas as pd
-import easyocr
+import pytesseract
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "ocr_dataset")
 IMAGES_DIR = os.path.join(DATASET_DIR, "images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
-print("Initializing EasyOCR reader for line segmentation & auto-labeling...", flush=True)
-reader = easyocr.Reader(['en'], gpu=False)
+print("Initializing OCR line segmentation & labeling...", flush=True)
 
 records = []
 line_counter = 0
@@ -44,27 +43,31 @@ def process_image(img_bgr, source_name):
     h, w = img_bgr.shape[:2]
 
     try:
-        results = reader.readtext(img_bgr)
+        rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        data = pytesseract.image_to_data(rgb, output_type=pytesseract.Output.DICT)
     except Exception as e:
         print(f"  Warning: Error reading image from {source_name}: {e}", flush=True)
         return
 
     saved_for_this = 0
-    for bbox, text, prob in results:
-        text_str = text.strip()
-        if len(text_str) < 3:
+    n_boxes = len(data.get('text', []))
+    for i in range(n_boxes):
+        text_str = data['text'][i].strip()
+        conf = float(data['conf'][i])
+        if len(text_str) < 3 or conf < 30:
             continue
 
-        (tl, tr, br, bl) = bbox
-        x_min = max(0, int(min(tl[0], bl[0])) - 4)
-        y_min = max(0, int(min(tl[1], tr[1])) - 4)
-        x_max = min(w, int(max(tr[0], br[0])) + 4)
-        y_max = min(h, int(max(bl[1], br[1])) + 4)
+        x = data['left'][i]
+        y = data['top'][i]
+        crop_w = data['width'][i]
+        crop_h = data['height'][i]
 
-        crop_w = x_max - x_min
-        crop_h = y_max - y_min
+        x_min = max(0, x - 4)
+        y_min = max(0, y - 4)
+        x_max = min(w, x + crop_w + 4)
+        y_max = min(h, y + crop_h + 4)
 
-        if crop_w > 35 and crop_h > 14:
+        if (x_max - x_min) > 35 and (y_max - y_min) > 14:
             crop = img_bgr[y_min:y_max, x_min:x_max]
             line_filename = f"line_{line_counter:05d}.png"
             crop_path = os.path.join(IMAGES_DIR, line_filename)
@@ -73,7 +76,7 @@ def process_image(img_bgr, source_name):
             records.append({
                 "file_name": f"images/{line_filename}",
                 "text": text_str,
-                "confidence": round(float(prob), 4),
+                "confidence": round(float(conf) / 100.0, 4),
                 "source": source_name
             })
             line_counter += 1

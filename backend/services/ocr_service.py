@@ -2,13 +2,13 @@
 OCR Service (TrOCR + Neural Vision)
 =====================================
 Handles image pre-processing using OpenCV and offline text extraction using:
-  Primary:  CRAFT text line segmentation + Microsoft TrOCR (trocr-base-handwritten)
-  Fallback: EasyOCR end-to-end recognition
+  Primary:  Qwen2-VL Vision-Language OCR / Modular OCRPipeline
+  Fallback: Microsoft TrOCR (trocr-base-handwritten) with OpenCV line segmentation
   Fallback: Tesseract OCR
 
 Pipeline for handwritten notebook photos:
   1. Preprocessing: perspective correction, deskew, shadow removal, adaptive threshold, denoise
-  2. Line detection: CRAFT / morphological + projection profile segmentation
+  2. Line detection: Morphological + projection profile segmentation
   3. Per-line recognition: TrOCR (GPU-accelerated when available)
 """
 
@@ -639,42 +639,42 @@ def recognize_lines_batch_trocr(line_images: list) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Local OCR Pipeline (TrOCR — replaces EasyOCR)
+# Text Region Detection (OpenCV Morphological Gradient)
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# EasyOCR Reader Loading
-# ---------------------------------------------------------------------------
-_easyocr_reader = None
-_easyocr_initialized = False
+def _detect_text_boxes_opencv(img: np.ndarray, min_size: int = 15) -> list:
+    """
+    Detect text bounding boxes using OpenCV morphological gradient and contour analysis.
+    Produces horizontal bounding boxes [xmin, xmax, ymin, ymax] for line grouping.
+    """
+    if img is None or img.size == 0:
+        return []
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img.copy()
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    grad = cv2.morphologyEx(enhanced, cv2.MORPH_GRADIENT, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+    _, thresh = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    kernel_conn = cv2.getStructuringElement(cv2.MORPH_RECT, (max(12, int(w * 0.012)), 3))
+    connected = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel_conn)
+    contours, _ = cv2.findContours(connected, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    bboxes = []
+    for cnt in contours:
+        x, y, bw, bh = cv2.boundingRect(cnt)
+        if bw >= min_size and bh >= 8 and not (bw > 0.98 * w and bh > 0.95 * h):
+            bboxes.append([x, x + bw, y, y + bh])
+    return bboxes
 
-def get_easyocr_reader():
-    """Lazy-load EasyOCR reader."""
-    global _easyocr_reader, _easyocr_initialized
-    if not _easyocr_initialized:
-        _easyocr_initialized = True
-        try:
-            import easyocr
-            import torch
-            use_gpu = torch.cuda.is_available()
-            logger.info(f"Initializing EasyOCR reader (GPU: {use_gpu})...")
-            _easyocr_reader = easyocr.Reader(['en'], gpu=use_gpu)
-            logger.info("EasyOCR reader initialized successfully.")
-        except Exception as e:
-            logger.warning(f"Failed to initialize EasyOCR: {e}")
-            _easyocr_reader = None
-    return _easyocr_reader
-
 
 # ---------------------------------------------------------------------------
-# Local OCR Pipeline (Qwen2-VL Primary, Modular Pipeline / EasyOCR Fallback)
+# Local OCR Pipeline (Qwen2-VL Primary, Modular Pipeline / TrOCR / Tesseract Fallback)
 # ---------------------------------------------------------------------------
 def extract_text_from_image_local(image_path: str) -> dict:
     """
     Full local OCR pipeline for handwritten assignments and scanned documents:
       1. Primary: Qwen2-VL Vision-Language OCR (offline 4-bit GPU)
-      2. Fallback: Modular CRAFT + Qwen2-VL / GOT-OCR pipeline
-      3. Fallback: EasyOCR end-to-end recognition
-      4. Last Resort: Tesseract
+      2. Fallback: Modular Vision-Language / GOT-OCR pipeline
+      3. Fallback: TrOCR (if configured)
+      4. Fallback: Tesseract OCR
     
     Returns:
         {"text": str, "confidence": float, "engine": str, "lines_detected": int}
@@ -694,7 +694,7 @@ def extract_text_from_image_local(image_path: str) -> dict:
                 )
                 return qwen_res
         except Exception as qwen_err:
-            logger.warning(f"Qwen2-VL assignment OCR encountered error ({qwen_err}). Falling back to modular pipeline / EasyOCR.")
+            logger.warning(f"Qwen2-VL assignment OCR encountered error ({qwen_err}). Falling back to modular pipeline / fallback OCR.")
 
     img = cv2.imread(image_path)
     if img is None:
@@ -726,19 +726,17 @@ def extract_text_from_image_local(image_path: str) -> dict:
                 "assignment_document": assignment_doc.model_dump(),
             }
     except Exception as pipe_err:
-        logger.warning(f"Modular OCRPipeline encountered error ({pipe_err}). Falling back to legacy OCR.")
+        logger.warning(f"Modular OCRPipeline encountered error ({pipe_err}). Falling back to fallback OCR.")
 
     h, w = img.shape[:2]
-    reader = get_easyocr_reader()
 
     # ── 2. Fallback: TrOCR (only if explicitly configured as OCR_ENGINE=trocr) ──
     if ocr_engine == "trocr":
         processor, trocr_model, trocr_device = get_trocr_model()
-        if reader is not None and trocr_model is not None and processor is not None:
+        if trocr_model is not None and processor is not None:
             try:
-                logger.info("Executing Hybrid CRAFT + TrOCR handwritten pipeline...")
-                horizontal_list, _ = reader.detect(img)
-                bboxes = horizontal_list[0] if horizontal_list else []
+                logger.info("Executing Hybrid Line Segmentation + TrOCR handwritten pipeline...")
+                bboxes = _detect_text_boxes_opencv(img)
 
                 if bboxes:
                     # Group and sort bounding boxes into reading lines with column gutter awareness
@@ -852,34 +850,7 @@ def extract_text_from_image_local(image_path: str) -> dict:
                             "lines_recognized": len(trocr_lines),
                         }
             except Exception as trocr_err:
-                logger.warning(f"Hybrid TrOCR pipeline failed: {trocr_err}. Falling back to EasyOCR.")
-
-    # ── 2. Fallback: EasyOCR standalone ───────────────────────────────
-    if reader is not None:
-        try:
-            results = reader.readtext(image_path)
-            if results:
-                lines = []
-                confs = []
-                for bbox, text, prob in results:
-                    text_str = text.strip()
-                    if text_str:
-                        lines.append(text_str)
-                        confs.append(float(prob))
-
-                extracted_text = "\n".join(lines)
-                avg_conf = (sum(confs) / len(confs) * 100.0) if confs else 0.0
-                scaled_confidence = min(98.0, max(avg_conf, 65.0 + (avg_conf * 0.35))) if (len(lines) > 5 and avg_conf > 25.0) else avg_conf
-
-                return {
-                    "text": extracted_text,
-                    "confidence": round(scaled_confidence, 1),
-                    "engine": "easyocr_handwritten",
-                    "lines_detected": len(results),
-                    "lines_recognized": len(lines),
-                }
-        except Exception as easy_err:
-            logger.warning(f"EasyOCR fallback failed: {easy_err}. Trying Tesseract.")
+                logger.warning(f"Hybrid TrOCR pipeline failed: {trocr_err}. Falling back to Tesseract.")
 
     # ── 3. Last Resort: Tesseract ─────────────────────────────────────
     try:
@@ -898,11 +869,11 @@ def extract_text_from_image_local(image_path: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Main Entry Point (Local TrOCR / EasyOCR / Tesseract Pipeline)
+# Main Entry Point (Local Qwen2-VL / TrOCR / Tesseract Pipeline)
 # ---------------------------------------------------------------------------
 def extract_text_from_image(image_path: str) -> dict:
     """
-    Extract text using the local neural OCR pipeline (TrOCR + EasyOCR fallback).
+    Extract text using the local neural OCR pipeline (Qwen2-VL / TrOCR with Tesseract fallback).
     Computes and attaches perceptual visual hash for duplicate detection.
     """
     visual_hash = compute_visual_hash(image_path)
